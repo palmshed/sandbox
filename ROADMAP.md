@@ -70,11 +70,12 @@ Before marking security and resource enforcement capabilities complete, the proj
 
 ### 2. Resource Enforcement (#7)
 - [x] Native CPU time limit enforcement (process-group sampling, `ERR_CPU_EXCEEDED`) — commit `240f2a5`
-- [ ] Native CPU core quota (`cpuQuota`) enforcement (experimental; cgroups v2 / Job Objects)
 - [x] Native memory limit enforcement (process-group RSS polling, `ERR_OOM_EXCEEDED`) — commits `bf5cc32` + `91debc8`
 - [x] Virtual filesystem disk quota enforcement (`ERR_DISK_QUOTA_EXCEEDED`) — commit `85f477a`
 - [x] Structured failure states and error types (`ERR_OOM_EXCEEDED`, `ERR_DISK_QUOTA_EXCEEDED`, `ERR_CPU_EXCEEDED`)
-- [ ] Backend capability contract unit and integration tests (flag *types* asserted in compliance/TCK; `memoryLimits: true` and `cpuLimits: true` verified via enforcement tests)
+- [x] Backend capability contract unit and integration tests: `memoryLimits: true` and `cpuLimits: true` verified via 26/26 SDK + 19/19 conformance/TCK enforcement tests
+- [x] Recursive process-tree cleanup after resource-limit kills (commit `2ee1f24`)
+- [ ] Native CPU core quota (`cpuQuota`) enforcement (experimental; cgroups v2 / Job Objects; best-effort sampling currently)
 
 ### 3. Network Isolation
 - [ ] Security threat model document for native and containerized networking (RFC 0004 threat model drafted; adversarial leak list defined)

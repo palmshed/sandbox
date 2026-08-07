@@ -73,7 +73,7 @@ Every execution backend reports supported features dynamically via `capabilities
 ```json
 {
   "filesystem": true,
-  "networkIsolation": true,
+  "networkIsolation": false,
   "cpuLimits": true,
   "memoryLimits": true,
   "streaming": true,
@@ -83,7 +83,7 @@ Every execution backend reports supported features dynamically via `capabilities
 
 `cpuLimits` reflects CPU **time** budget enforcement (Linux/macOS: supported via process-group sampling; Windows: best-effort WMIC polling). The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
 
-`networkIsolation` stays `false` until the Native backend implements `network: 'disabled'` and adversarial leak tests pass (see `rfcs/0004-network-isolation.md`).
+`networkIsolation` stays `false` until the Native backend implements `network: 'disabled'` and adversarial leak tests pass (see `rfcs/0004-network-isolation.md`). RFC 0004 threat model is documented; macOS Seatbelt profile is a candidate mechanism; Linux implementation pending.
 
 This allows SDKs to adapt gracefully without embedding backend-specific conditional logic.
 
