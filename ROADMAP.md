@@ -61,12 +61,12 @@ Before marking security and resource enforcement capabilities complete, the proj
 > **Goal**: Turn capability flags into verified runtime guarantees ("This sandbox enforces the boundaries it documents").
 > **Rule**: Capabilities change from `false` → `true` only when backed by integration tests.
 
-### 1. Process Lifecycle & Signal Handling (#2)
-- [ ] POSIX process tree discovery (group PIDs & sub-shell descendants)
-- [ ] Windows process tree termination (`taskkill /F /T` equivalent)
-- [ ] Orphan process detection integration test suite
-- [ ] `destroy()` during active streaming/background process execution
-- [ ] Timeout cleanup regression test suite across platforms
+### 1. Process Lifecycle & Signal Handling (#2) [COMPLETED]
+- [x] POSIX process tree discovery (group PIDs & sub-shell descendants)
+- [x] Windows process tree termination (`taskkill /F /T` equivalent)
+- [x] Orphan process detection integration test suite
+- [x] `destroy()` during active streaming/background process execution
+- [x] Timeout cleanup regression test suite across platforms
 
 ### 2. Resource Enforcement (#7)
 - [ ] Native CPU time and quota limit enforcement
