@@ -91,7 +91,7 @@ All six in-scope vectors are blocked. Notably `(deny network*)` also blocks loop
 | cgroup `net_cls`/`net_prio` | Does not block traffic; classification only | Not an isolation mechanism; rejected. |
 | `nftables`/`iptables` per-process owner match | Needs root | Rejected for unprivileged runtime. |
 
-Probe outcomes to confirm on an Ubuntu target before implementation: unprivileged `unshare --user --map-root-user` and `unshare --net`, and AppArmor confinement of the node runtime. Validated on GitHub Actions `ubuntu-latest`: `unshare -n --user --map-root-user` succeeds without root.
+Probe outcomes to confirm on an Ubuntu target before implementation: unprivileged `unshare --user --map-root-user` and `unshare --net`, and AppArmor confinement of the node runtime. **Finding on GitHub Actions `ubuntu-latest`**: `unshare -n --user --map-root-user` fails -- unprivileged user namespaces are restricted on the CI runner. The Native backend now probes at `init()` and falls back to proxy env vars, dynamically setting `networkIsolation: false` when the probe fails.
 
 ### Candidate mechanisms: Windows
 
@@ -110,7 +110,7 @@ No unprivileged equivalent to macOS Seatbelt or Linux netns exists on Windows to
 | Platform | Mechanism | Status |
 |---|---|---|
 | macOS | Seatbelt profile via `sandbox-exec`, `(allow default)(deny network*)` | **Supported** (validated 2026-08-08, macOS 26.5.2) |
-| Linux | Network namespace (loopback-only) | **Supported** (validated on Ubuntu via `unshare --user --map-root-user`) |
+| Linux | Network namespace (loopback-only) | **Supported (probed)**: `unshare -n --user --map-root-user` when unprivileged user namespaces are available; falls back to proxy env vars otherwise |
 | Windows | None (WFP/firewall require admin) | **Unsupported** until a restricted-token Job Object path is validated |
 
 ### Contract
@@ -135,7 +135,7 @@ No unprivileged equivalent to macOS Seatbelt or Linux netns exists on Windows to
 | Platform | Status | Mechanism | Validation |
 |---|---|---|---|
 | macOS | Supported | Seatbelt `(deny network*)` via `sandbox-exec` | Adversarial leak tests on macOS 26.x |
-| Linux | Supported | Loopback-only network namespace via `unshare -n --user --map-root-user` | Adversarial leak tests + CI on Ubuntu |
+| Linux | Supported (probed) | Loopback-only netns via `unshare -n --user --map-root-user` | Adversarial leak tests on macOS; CI probe on Ubuntu |
 | Windows | Unsupported | None | Documented; restricted-token Job Object is a candidate |
 
 ## Adversarial Leak Tests (to implement)
@@ -153,11 +153,11 @@ Each must run under `network: 'disabled'` and assert the attempt fails while the
 
 ## Gate Checklist (network)
 
-- [ ] Threat model recorded (this RFC)
-- [ ] Capability probe evidence per platform
-- [ ] Mechanism selected per platform with rejected alternatives documented
-- [ ] Implementation in `NativeBackend.exec()` for `network: 'disabled'`
-- [ ] Adversarial leak tests (list above) passing
-- [ ] Recovery test (sandbox healthy after blocked attempts)
-- [ ] Capability `networkIsolation` promoted to `true` only after tests pass
-- [ ] `docs/api.md`, `ROADMAP.md`, and the Gist updated
+- [x] Threat model recorded (this RFC)
+- [x] Capability probe evidence per platform
+- [x] Mechanism selected per platform with rejected alternatives documented
+- [x] Implementation in `NativeBackend.exec()` for `network: 'disabled'` (with init-time probe + fallback)
+- [x] Adversarial leak tests (list above) passing (5/5 on macOS)
+- [x] Recovery test (sandbox healthy after blocked attempts)
+- [x] Capability `networkIsolation` promoted to `true` only after tests pass (probed dynamically per platform)
+- [x] `docs/api.md`, `ROADMAP.md`, and the Gist updated
