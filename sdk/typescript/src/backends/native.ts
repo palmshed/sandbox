@@ -345,6 +345,7 @@ export class NativeBackend implements BackendEngine {
         try {
           if (!isWin && child.pid !== undefined) {
             const descendants = this.getDescendantPids(child.pid);
+            console.warn(`[killProcess ${signal}] root=${child.pid} descendants=${JSON.stringify(descendants)}`);
             for (const pid of descendants) {
               try {
                 process.kill(pid, signal);
@@ -466,6 +467,8 @@ export class NativeBackend implements BackendEngine {
           const last = sampleGroupCpuTimeMs(child.pid);
           if (last !== -1) finalCpuTimeMs = last;
         }
+
+        console.warn(`[child.onClose] pid=${child.pid} oomKilled=${oomKilled} cpuExceeded=${cpuExceeded} timedOut=${timedOut}`);
 
         // Thorough cleanup: kill process group, then sweep escaped descendants
         if (child.pid !== undefined) {
@@ -638,6 +641,9 @@ export class NativeBackend implements BackendEngine {
         }
       }
     }
+    if (children.length > 0) {
+      console.warn(`[getChildPids] parent=${parentPid} children=${JSON.stringify(children)}`);
+    }
     return children;
   }
 
@@ -654,6 +660,9 @@ export class NativeBackend implements BackendEngine {
         descendants.push(childPid);
         queue.push(childPid);
       }
+    }
+    if (descendants.length > 0) {
+      console.warn(`[getDescendantPids] root=${rootPid} descendants=${JSON.stringify(descendants)}`);
     }
     return descendants;
   }
@@ -674,6 +683,7 @@ export class NativeBackend implements BackendEngine {
     let remaining = this.getDescendantPids(rootPid);
     let iterations = 0;
     while (remaining.length > 0 && iterations < 10) {
+      console.warn(`[cleanupProcessTree] root=${rootPid} iteration=${iterations} remaining=${JSON.stringify(remaining)}`);
       for (const pid of remaining) {
         try {
           process.kill(pid, 'SIGKILL');
@@ -687,7 +697,9 @@ export class NativeBackend implements BackendEngine {
     }
 
     if (remaining.length > 0) {
-      console.warn(`Process tree cleanup incomplete: ${remaining.length} descendant(s) remain after ${iterations} iterations`);
+      console.warn(`[cleanupProcessTree] FAILED root=${rootPid} remaining=${JSON.stringify(remaining)} after ${iterations} iterations`);
+    } else if (iterations > 0) {
+      console.warn(`[cleanupProcessTree] SUCCESS root=${rootPid} cleaned in ${iterations} iterations`);
     }
   }
 
