@@ -344,10 +344,16 @@ export class NativeBackend implements BackendEngine {
         if (settled) return;
         try {
           if (!isWin && child.pid !== undefined) {
-            // Negative PID targets the entire POSIX process group
+            const descendants = this.getDescendantPids(child.pid);
+            for (const pid of descendants) {
+              try {
+                process.kill(pid, signal);
+              } catch {
+                // process may have already exited
+              }
+            }
             process.kill(-child.pid, signal);
           } else if (isWin && child.pid !== undefined) {
-            // Windows process tree cleanup using taskkill
             const { execSync } = require('child_process');
             try {
               execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' });
