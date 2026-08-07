@@ -26,7 +26,19 @@ export declare class Sandbox {
     get backendName(): string;
     /** Negotiated capability flags of the active execution backend */
     get capabilities(): import("../backends/interface.js").BackendCapabilities;
-    /** Run a process inside the sandbox runtime and return an Execution handle */
+    /**
+     * Run a process inside the sandbox and return a live Execution handle.
+     *
+     * The handle transitions through: running → completed | failed | cancelled | timedout
+     *
+     * @example
+     * const execution = await sandbox.exec("npm test");
+     * execution.on("stdout", (chunk) => process.stdout.write(chunk));
+     * execution.on("exit", (code) => console.log("Exit:", code));
+     * await execution.wait();
+     * console.log(execution.status());   // "completed" | "failed" | "timedout"
+     * console.log(execution.metadata()); // { id, backend, specVersion, ... }
+     */
     exec(command: string, options?: ExecOptions): Promise<Execution>;
     /** Read file content from the sandbox filesystem */
     readFile(filePath: string): Promise<Buffer>;

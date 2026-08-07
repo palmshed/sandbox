@@ -44,11 +44,43 @@ export class Sandbox {
     return this.backendEngine.capabilities;
   }
 
-  /** Run a process inside the sandbox runtime and return an Execution handle */
-  async exec(command: string, options?: ExecOptions): Promise<Execution> {
+  /**
+   * Run a process inside the sandbox and return a live Execution handle.
+   *
+   * The handle transitions through: running → completed | failed | cancelled | timedout
+   *
+   * @example
+   * const execution = await sandbox.exec("npm test");
+   * execution.on("stdout", (chunk) => process.stdout.write(chunk));
+   * execution.on("exit", (code) => console.log("Exit:", code));
+   * await execution.wait();
+   * console.log(execution.status());   // "completed" | "failed" | "timedout"
+   * console.log(execution.metadata()); // { id, backend, specVersion, ... }
+   */
+  async exec(command: string, options: ExecOptions = {}): Promise<Execution> {
     this.ensureActive();
-    const result = await this.backendEngine.exec(command, options);
-    return new Execution(result);
+    const execId = `exec_${Math.random().toString(36).substring(2, 10)}`;
+    const handle = new Execution(execId, this.backendEngine.name);
+
+    const wrappedOptions: ExecOptions = {
+      ...options,
+      onStdout: (chunk) => {
+        handle._onStdout(chunk);
+        options.onStdout?.(chunk);
+      },
+      onStderr: (chunk) => {
+        handle._onStderr(chunk);
+        options.onStderr?.(chunk);
+      },
+    };
+
+    this.backendEngine.exec(command, wrappedOptions).then((result) => {
+      result.id = execId;
+      result.metadata.id = execId;
+      handle._complete(result);
+    });
+
+    return handle;
   }
 
   /** Read file content from the sandbox filesystem */

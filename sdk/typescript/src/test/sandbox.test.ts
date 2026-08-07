@@ -12,38 +12,74 @@ test('Native Backend Sandbox Execution', async (t) => {
     await sandbox.destroy();
   });
 
-  await t.test('executes echo command and returns Execution handle', async () => {
+  await t.test('returns live Execution handle with URI and status', async () => {
     const execution = await sandbox.exec('echo "Hello Palmshed Sandbox"');
+    // Execution is live (running) before wait
+    assert.equal(execution.status(), 'running');
+    assert.match(execution.id, /^exec_/);
+    assert.match(execution.uri, /^sandbox:\/\/execution\/exec_/);
+
+    await execution.wait();
+
+    assert.equal(execution.status(), 'completed');
     assert.equal(execution.exitCode, 0);
     assert.match(execution.stdout, /Hello Palmshed Sandbox/);
-    // Execution metadata is always present
-    assert.match(execution.id, /^exec_/);
-    assert.equal(execution.metadata.backend, 'native');
-    assert.equal(execution.metadata.specVersion, '0.1.0');
-    assert.equal(typeof execution.metadata.startedAt, 'string');
-    assert.equal(typeof execution.metadata.finishedAt, 'string');
-    assert.equal(execution.metadata.exitCode, 0);
-    assert.equal(execution.metadata.timedOut, false);
   });
 
-  await t.test('streams stdout output', async () => {
-    let captured = '';
-    const execution = await sandbox.exec('echo "Stream Chunk"', {
-      onStdout: (data: string) => {
-        captured += data;
-      },
-    });
-    assert.equal(execution.exitCode, 0);
-    assert.match(captured, /Stream Chunk/);
+  await t.test('populates structured metadata after wait()', async () => {
+    const execution = await sandbox.exec('echo "Metadata Test"');
+    await execution.wait();
+
+    const meta = execution.metadata()!;
+    assert.equal(meta.backend, 'native');
+    assert.equal(meta.specVersion, '0.1.0');
+    assert.equal(meta.exitCode, 0);
+    assert.equal(meta.timedOut, false);
+    assert.equal(typeof meta.startedAt, 'string');
+    assert.equal(typeof meta.finishedAt, 'string');
+    assert.ok(meta.durationMs >= 0);
   });
 
-  await t.test('handles command timeout and reports via metadata', async () => {
+  await t.test('emits stdout events in real time', async () => {
+    const chunks: string[] = [];
+    const execution = await sandbox.exec('echo "Stream Chunk"');
+    execution.on('stdout', (data) => chunks.push(data));
+    await execution.wait();
+
+    assert.ok(chunks.length > 0);
+    assert.ok(chunks.join('').includes('Stream Chunk'));
+  });
+
+  await t.test('emits exit event with code', async () => {
+    let exitCode: number | null = null;
+    const execution = await sandbox.exec('exit 0');
+    execution.on('exit', (code) => { exitCode = code; });
+    await execution.wait();
+    assert.equal(exitCode, 0);
+  });
+
+  await t.test('logs() returns accumulated stdout', async () => {
+    const execution = await sandbox.exec('echo "Log line"');
+    await execution.wait();
+    assert.match(execution.logs(), /Log line/);
+  });
+
+  await t.test('timedout status and metadata flag', async () => {
     const execution = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
       timeout: 200,
     });
-    assert.equal(execution.timedOut, true);
+    await execution.wait();
+    assert.equal(execution.status(), 'timedout');
     assert.equal(execution.exitCode, -1);
-    assert.equal(execution.metadata.timedOut, true);
+    assert.equal(execution.metadata()!.timedOut, true);
+  });
+
+  await t.test('cancel() transitions status to cancelled', async () => {
+    const execution = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
+      timeout: 5000,
+    });
+    await execution.cancel();
+    assert.equal(execution.status(), 'cancelled');
   });
 
   await t.test('filesystem write, read, upload, download', async () => {
@@ -51,19 +87,15 @@ test('Native Backend Sandbox Execution', async (t) => {
     const buf = await sandbox.readFile('hello.txt');
     assert.equal(buf.toString(), 'Virtual filesystem works!');
 
-    // Test upload & download
     const tmpLocalSrc = path.join(os.tmpdir(), `test-upload-${Date.now()}.txt`);
     const tmpLocalDst = path.join(os.tmpdir(), `test-download-${Date.now()}.txt`);
 
     await fs.writeFile(tmpLocalSrc, 'Host to Sandbox file payload');
     await sandbox.uploadFile(tmpLocalSrc, 'uploaded/target.txt');
-
     await sandbox.downloadFile('uploaded/target.txt', tmpLocalDst);
     const downloadedContent = await fs.readFile(tmpLocalDst, 'utf-8');
-
     assert.equal(downloadedContent, 'Host to Sandbox file payload');
 
-    // Cleanup host temp files
     await fs.rm(tmpLocalSrc, { force: true });
     await fs.rm(tmpLocalDst, { force: true });
   });

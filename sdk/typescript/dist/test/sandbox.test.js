@@ -47,42 +47,69 @@ const index_js_1 = require("../index.js");
     t.after(async () => {
         await sandbox.destroy();
     });
-    await t.test('executes echo command and returns Execution handle', async () => {
+    await t.test('returns live Execution handle with URI and status', async () => {
         const execution = await sandbox.exec('echo "Hello Palmshed Sandbox"');
+        // Execution is live (running) before wait
+        strict_1.default.equal(execution.status(), 'running');
+        strict_1.default.match(execution.id, /^exec_/);
+        strict_1.default.match(execution.uri, /^sandbox:\/\/execution\/exec_/);
+        await execution.wait();
+        strict_1.default.equal(execution.status(), 'completed');
         strict_1.default.equal(execution.exitCode, 0);
         strict_1.default.match(execution.stdout, /Hello Palmshed Sandbox/);
-        // Execution metadata is always present
-        strict_1.default.match(execution.id, /^exec_/);
-        strict_1.default.equal(execution.metadata.backend, 'native');
-        strict_1.default.equal(execution.metadata.specVersion, '0.1.0');
-        strict_1.default.equal(typeof execution.metadata.startedAt, 'string');
-        strict_1.default.equal(typeof execution.metadata.finishedAt, 'string');
-        strict_1.default.equal(execution.metadata.exitCode, 0);
-        strict_1.default.equal(execution.metadata.timedOut, false);
     });
-    await t.test('streams stdout output', async () => {
-        let captured = '';
-        const execution = await sandbox.exec('echo "Stream Chunk"', {
-            onStdout: (data) => {
-                captured += data;
-            },
-        });
-        strict_1.default.equal(execution.exitCode, 0);
-        strict_1.default.match(captured, /Stream Chunk/);
+    await t.test('populates structured metadata after wait()', async () => {
+        const execution = await sandbox.exec('echo "Metadata Test"');
+        await execution.wait();
+        const meta = execution.metadata();
+        strict_1.default.equal(meta.backend, 'native');
+        strict_1.default.equal(meta.specVersion, '0.1.0');
+        strict_1.default.equal(meta.exitCode, 0);
+        strict_1.default.equal(meta.timedOut, false);
+        strict_1.default.equal(typeof meta.startedAt, 'string');
+        strict_1.default.equal(typeof meta.finishedAt, 'string');
+        strict_1.default.ok(meta.durationMs >= 0);
     });
-    await t.test('handles command timeout and reports via metadata', async () => {
+    await t.test('emits stdout events in real time', async () => {
+        const chunks = [];
+        const execution = await sandbox.exec('echo "Stream Chunk"');
+        execution.on('stdout', (data) => chunks.push(data));
+        await execution.wait();
+        strict_1.default.ok(chunks.length > 0);
+        strict_1.default.ok(chunks.join('').includes('Stream Chunk'));
+    });
+    await t.test('emits exit event with code', async () => {
+        let exitCode = null;
+        const execution = await sandbox.exec('exit 0');
+        execution.on('exit', (code) => { exitCode = code; });
+        await execution.wait();
+        strict_1.default.equal(exitCode, 0);
+    });
+    await t.test('logs() returns accumulated stdout', async () => {
+        const execution = await sandbox.exec('echo "Log line"');
+        await execution.wait();
+        strict_1.default.match(execution.logs(), /Log line/);
+    });
+    await t.test('timedout status and metadata flag', async () => {
         const execution = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
             timeout: 200,
         });
-        strict_1.default.equal(execution.timedOut, true);
+        await execution.wait();
+        strict_1.default.equal(execution.status(), 'timedout');
         strict_1.default.equal(execution.exitCode, -1);
-        strict_1.default.equal(execution.metadata.timedOut, true);
+        strict_1.default.equal(execution.metadata().timedOut, true);
+    });
+    await t.test('cancel() transitions status to cancelled', async () => {
+        const execution = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
+            timeout: 5000,
+        });
+        await execution.cancel();
+        strict_1.default.equal(execution.status(), 'cancelled');
     });
     await t.test('filesystem write, read, upload, download', async () => {
         await sandbox.writeFile('hello.txt', 'Virtual filesystem works!');
         const buf = await sandbox.readFile('hello.txt');
         strict_1.default.equal(buf.toString(), 'Virtual filesystem works!');
-        // Test upload & download
         const tmpLocalSrc = path.join(os.tmpdir(), `test-upload-${Date.now()}.txt`);
         const tmpLocalDst = path.join(os.tmpdir(), `test-download-${Date.now()}.txt`);
         await fs.writeFile(tmpLocalSrc, 'Host to Sandbox file payload');
@@ -90,7 +117,6 @@ const index_js_1 = require("../index.js");
         await sandbox.downloadFile('uploaded/target.txt', tmpLocalDst);
         const downloadedContent = await fs.readFile(tmpLocalDst, 'utf-8');
         strict_1.default.equal(downloadedContent, 'Host to Sandbox file payload');
-        // Cleanup host temp files
         await fs.rm(tmpLocalSrc, { force: true });
         await fs.rm(tmpLocalDst, { force: true });
     });
