@@ -326,7 +326,33 @@ export class NativeBackend implements BackendEngine {
         return totalMs;
       };
 
-      const child = spawn(shell, [shellFlag, command], {
+      /**
+       * RFC 0004: Network isolation for `network: 'disabled'`.
+       * On Linux, use `unshare -n` to create an isolated network namespace.
+       * On macOS, use `sandbox-exec` with a Seatbelt profile (deprecated but working).
+       * On Windows, network isolation is Unsupported (no-op).
+       */
+      let spawnShell = shell;
+      let spawnArgs: string[];
+
+      if (this.options.network === 'disabled') {
+        if (process.platform === 'linux') {
+          spawnShell = '/bin/sh';
+          spawnArgs = ['-c', `unshare -n -- /bin/sh -c ${JSON.stringify(command)}`];
+        } else if (process.platform === 'darwin') {
+          const sbProfile = '(version 1) (allow default) (deny network*)';
+          spawnShell = '/usr/bin/sandbox-exec';
+          spawnArgs = ['-p', sbProfile, shell, shellFlag, command];
+        } else {
+          spawnShell = shell;
+          spawnArgs = [shellFlag, command];
+        }
+      } else {
+        spawnShell = shell;
+        spawnArgs = [shellFlag, command];
+      }
+
+      const child = spawn(spawnShell, spawnArgs, {
         cwd,
         env,
         stdio: ['pipe', 'pipe', 'pipe'],
