@@ -45,7 +45,7 @@ class NativeBackend {
     capabilities = {
         filesystem: true,
         networkIsolation: false,
-        cpuLimits: false,
+        cpuLimits: true,
         memoryLimits: true,
         streaming: true,
         remoteExecution: false,

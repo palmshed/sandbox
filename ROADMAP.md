@@ -77,10 +77,12 @@ Before marking security and resource enforcement capabilities complete, the proj
 - [ ] Backend capability contract unit and integration tests (flag *types* asserted in compliance/TCK; `memoryLimits: true` and `cpuLimits: true` verified via enforcement tests)
 
 ### 3. Network Isolation
-- [ ] Security threat model document for native and containerized networking
-- [ ] Native backend isolation design decision (unshare/namespaces vs fallback proxies)
+- [ ] Security threat model document for native and containerized networking (RFC 0004 threat model drafted; adversarial leak list defined)
+- [x] Native backend isolation design decision (`rfcs/0004-network-isolation.md`; macOS Seatbelt validated, Linux netns proposed, Windows documented as Unsupported)
+- [ ] Capability probe suite (`scripts/probes/network-capability.mjs`; macOS baseline recorded, Linux/Windows pending)
+- [ ] Native backend `network: 'disabled'` implementation
+- [ ] Adversarial network leak test suite (TCP, UDP, DNS, localhost, raw sockets, ICMP, child processes)
 - [ ] Docker container network isolation test suite (`--network none` leak checks)
-- [ ] Automated network leak test suite (TCP, UDP, raw socket, DNS)
 
 ### Acceptance Criteria for Capability Promotion (`false` → `true`)
 - Implementation exists in the native backend engine
@@ -90,6 +92,9 @@ Before marking security and resource enforcement capabilities complete, the proj
 - Integration tests cover both standard and adversarial cases (fork bombs, memory leaks, unkilled child processes)
 - CI suite verifies behavior consistently across target platforms
 - Documentation & Gist updated with verified guarantee levels
+
+### Reproducible Guarantee Laboratory (`repro/`)
+Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.js`) that prints expected behavior and exits non-zero when the guarantee is violated. Workflow: repro → confirm it fails → automated test → fix → keep the regression test. Run with `node repro/run.js` (add `--network` to include the red RFC 0004 gap repros). New capability work should land a matching repro in the same change.
 
 ---
 

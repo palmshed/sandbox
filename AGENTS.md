@@ -33,6 +33,7 @@ sandbox/
 │   ├── deprecations.md    # Field deprecation schedule
 │   └── version.md         # Specification versioning
 ├── rfcs/                  # Architectural RFCs explaining design choices
+│   ├── 0004-network-isolation.md # Native network isolation design (Proposed)
 ├── tck/                   # Technology Compatibility Kit for external certification
 │   ├── lifecycle/
 │   ├── filesystem/
@@ -45,10 +46,19 @@ sandbox/
 │   ├── rust/              # Phase 2 Rust SDK & core engine
 │   ├── go/                # Phase 3 Go SDK
 │   └── python/            # Phase 3 Python SDK (AI agent frameworks)
+├── scripts/
+│   └── probes/            # Capability probes (network isolation measurement)
 ├── compliance/            # Cross-SDK & Backend conformance test suites
 │   ├── sdk/               # SDK behavior verification
 │   ├── backends/          # Backend engine contract tests
 │   └── fixtures/          # Shared test fixtures
+├── repro/                 # Reproducible guarantee/bug laboratory
+│   ├── cpu/               # CPU-time enforcement repros
+│   ├── memory/            # Memory enforcement repros
+│   ├── process/           # Lifecycle repros (signals, nested trees, destroy)
+│   ├── disk/              # Disk quota repros
+│   ├── network/           # Network isolation repros (red until RFC 0004)
+│   └── run.js             # Runs all repros; use --network to include red ones
 ├── examples/              # Usage examples and scripts
 ├── AGENTS.md              # Primary agent reference guide
 └── README.md              # Repository overview
@@ -72,6 +82,8 @@ Every execution backend reports supported features dynamically via `capabilities
 ```
 
 `cpuLimits` reflects CPU **time** budget enforcement (Linux/macOS: supported via process-group sampling; Windows: best-effort WMIC polling). The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
+
+`networkIsolation` stays `false` until the Native backend implements `network: 'disabled'` and adversarial leak tests pass (see `rfcs/0004-network-isolation.md`).
 
 This allows SDKs to adapt gracefully without embedding backend-specific conditional logic.
 
