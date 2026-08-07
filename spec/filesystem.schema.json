@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palmshed.io/schemas/filesystem.schema.json",
+  "title": "FilesystemOperations",
+  "description": "Schema definitions for sandbox virtual filesystem and transfer operations",
+  "definitions": {
+    "FileTransferRequest": {
+      "type": "object",
+      "required": ["sourcePath", "targetPath"],
+      "properties": {
+        "sourcePath": {
+          "type": "string"
+        },
+        "targetPath": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

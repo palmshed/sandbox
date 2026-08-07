@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palmshed.io/schemas/capabilities.schema.json",
+  "title": "BackendCapabilities",
+  "description": "Capability negotiation flags describing feature support by an execution backend",
+  "type": "object",
+  "required": [
+    "filesystem",
+    "network isolation",
+    "cpuLimits",
+    "memoryLimits",
+    "streaming"
+  ],
+  "properties": {
+    "filesystem": {
+      "type": "boolean",
+      "description": "True if isolated virtual filesystem operations are supported"
+    },
+    "networkIsolation": {
+      "type": "boolean",
+      "description": "True if network policies (e.g. disabled, proxy) can be enforced"
+    },
+    "cpuLimits": {
+      "type": "boolean",
+      "description": "True if CPU core hardware resource limits can be enforced"
+    },
+    "memoryLimits": {
+      "type": "boolean",
+      "description": "True if memory allocation limit caps can be enforced"
+    },
+    "streaming": {
+      "type": "boolean",
+      "description": "True if real-time stdout/stderr log streaming is supported"
+    },
+    "remoteExecution": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if backend executes via a remote daemon or network endpoint"
+    }
+  },
+  "additionalProperties": false
+}

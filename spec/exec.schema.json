@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palmshed.io/schemas/exec.schema.json",
+  "title": "ExecOptionsAndResult",
+  "description": "Schemas for execution input parameters and return results",
+  "definitions": {
+    "ExecOptions": {
+      "type": "object",
+      "properties": {
+        "timeout": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workDir": {
+          "type": "string"
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExecResult": {
+      "type": "object",
+      "required": ["exitCode", "stdout", "stderr", "durationMs", "timedOut"],
+      "properties": {
+        "exitCode": {
+          "type": "integer"
+        },
+        "stdout": {
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "timedOut": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

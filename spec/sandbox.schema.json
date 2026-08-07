@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://palmshed.io/schemas/sandbox.schema.json",
+  "title": "SandboxOptions",
+  "description": "Configuration options for initializing a Sandbox instance",
+  "type": "object",
+  "properties": {
+    "backend": {
+      "type": "string",
+      "default": "native",
+      "description": "Execution backend identifier (e.g. native, docker, firecracker, wasi)"
+    },
+    "cpu": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "Number of CPU cores allocated"
+    },
+    "memory": {
+      "type": ["string", "number"],
+      "description": "Memory limit (e.g. '512MB' or bytes count)"
+    },
+    "timeout": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Global execution timeout in milliseconds"
+    },
+    "network": {
+      "type": "string",
+      "enum": ["disabled", "allow", "proxy"],
+      "default": "disabled",
+      "description": "Network access control policy"
+    },
+    "workDir": {
+      "type": "string",
+      "description": "Working directory inside the sandbox environment"
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Environment variables key-value map"
+    },
+    "image": {
+      "type": "string",
+      "description": "Container image identifier (only used by docker or microvm backends)"
+    }
+  },
+  "additionalProperties": false
+}

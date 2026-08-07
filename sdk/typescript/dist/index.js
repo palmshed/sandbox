@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createBackend = exports.registerBackend = exports.SandboxError = exports.Sandbox = void 0;
+var sandbox_js_1 = require("./core/sandbox.js");
+Object.defineProperty(exports, "Sandbox", { enumerable: true, get: function () { return sandbox_js_1.Sandbox; } });
+var types_js_1 = require("./core/types.js");
+Object.defineProperty(exports, "SandboxError", { enumerable: true, get: function () { return types_js_1.SandboxError; } });
+var index_js_1 = require("./backends/index.js");
+Object.defineProperty(exports, "registerBackend", { enumerable: true, get: function () { return index_js_1.registerBackend; } });
+Object.defineProperty(exports, "createBackend", { enumerable: true, get: function () { return index_js_1.createBackend; } });
