@@ -75,6 +75,28 @@ This allows SDKs to adapt gracefully without embedding backend-specific conditio
 
 ---
 
+## Living Engineering Gist
+
+The central project engineering log lives at:
+
+**https://gist.github.com/bniladridas/e2a499783be6d2b9de4dd7cf4f34ee7d** (`building-palmshed-sandbox.md`)
+
+It records validation state, verified capabilities, benchmark profiles, and a cumulative revision history. Every capability transition (`false` → `true`) or completed issue sub-task MUST be reflected there in the same work session — including the commit(s), negative/recovery test results, and any platform limitations.
+
+Update it via the GitHub API (avoids the interactive editor):
+
+```bash
+node -e '
+  const fs = require("fs");
+  const content = fs.readFileSync("<file>", "utf-8");
+  const payload = { files: { "building-palmshed-sandbox.md": { content } } };
+  fs.writeFileSync("<payload>.json", JSON.stringify(payload));
+'
+gh api -X PATCH gists/e2a499783be6d2b9de4dd7cf4f34ee7d --input <payload>.json
+```
+
+---
+
 ## Build & Conformance Commands
 
 - **Build TypeScript Reference SDK**: `cd sdk/typescript && npm run build`

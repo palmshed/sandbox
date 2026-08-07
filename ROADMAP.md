@@ -9,7 +9,7 @@
 To prevent documentation drift across the repository:
 
 > - **[`ROADMAP.md`](file:///Users/bniladridas/Desktop/sandbox/ROADMAP.md)** describes direction, milestones, and architectural progression.
-> - **The Gist** records current validation state, verified capabilities, and benchmark profiles.
+> - **The Gist** records current validation state, verified capabilities, and benchmark profiles. (Living engineering log: https://gist.github.com/bniladridas/e2a499783be6d2b9de4dd7cf4f34ee7d)
 > - **Tests (`compliance/`, `tck/`, `sdk/typescript/src/test/`)** define what is actually guaranteed.
 
 ---
@@ -70,10 +70,10 @@ Before marking security and resource enforcement capabilities complete, the proj
 
 ### 2. Resource Enforcement (#7)
 - [ ] Native CPU time and quota limit enforcement
-- [ ] Native memory limit enforcement (cgroups v2 / process monitoring)
-- [ ] Virtual filesystem disk quota enforcement
-- [ ] Structured failure states and error types (e.g. `ERR_OOM_EXCEEDED`, `ERR_CPU_EXCEEDED`)
-- [ ] Backend capability contract unit and integration tests
+- [x] Native memory limit enforcement (process-group RSS polling, `ERR_OOM_EXCEEDED`) — commits `bf5cc32` + `91debc8`
+- [x] Virtual filesystem disk quota enforcement (`ERR_DISK_QUOTA_EXCEEDED`) — commit `85f477a`
+- [ ] Structured failure states and error types (`ERR_OOM_EXCEEDED`, `ERR_DISK_QUOTA_EXCEEDED` done; `ERR_CPU_EXCEEDED` pending)
+- [ ] Backend capability contract unit and integration tests (flag *types* asserted in compliance/TCK; `memoryLimits: true` verified via enforcement tests)
 
 ### 3. Network Isolation
 - [ ] Security threat model document for native and containerized networking
