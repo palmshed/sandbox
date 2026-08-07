@@ -1,0 +1,9 @@
+# Build output (consumers use dist/)
+src/
+dist/test/
+
+# Local tgz artifacts (don't self-include)
+*.tgz
+
+# Build config (not needed by consumers)
+tsconfig.json

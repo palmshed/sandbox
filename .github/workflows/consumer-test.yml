@@ -1,0 +1,39 @@
+name: Consumer Test
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'sdk/typescript/src/**'
+      - 'examples/consumer-test/**'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'sdk/typescript/src/**'
+      - 'examples/consumer-test/**'
+
+jobs:
+  consumer-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install SDK dependencies
+        run: cd sdk/typescript && npm ci
+
+      - name: Build SDK
+        run: cd sdk/typescript && npm run build
+
+      - name: Pack SDK artifact
+        run: cd sdk/typescript && npm pack
+
+      - name: Install consumer test dependencies
+        run: cd examples/consumer-test && rm -rf node_modules package-lock.json && npm install
+
+      - name: Run consumer test
+        run: cd examples/consumer-test && npm test

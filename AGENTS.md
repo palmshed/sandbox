@@ -57,9 +57,12 @@ sandbox/
 │   ├── memory/            # Memory enforcement repros
 │   ├── process/           # Lifecycle repros (signals, nested trees, destroy)
 │   ├── disk/              # Disk quota repros
-│   ├── network/           # Network isolation repros (red until RFC 0004)
-│   └── run.js             # Runs all repros; use --network to include red ones
+│   ├── network/           # Network isolation repros (RFC 0004)
+│   └── run.js             # Runs all repros; use --verbose for output
 ├── examples/              # Usage examples and scripts
+│   ├── consumer-test/     # Isolated consumer integration test (built from npm pack)
+│   │   └── run.sh         # Reproducible: build + pack + install + test
+│   └── README.md          # Usage examples overview
 ├── AGENTS.md              # Primary agent reference guide
 └── README.md              # Repository overview
 ```
@@ -119,6 +122,8 @@ gh api -X PATCH gists/e2a499783be6d2b9de4dd7cf4f34ee7d --input <payload>.json
 - **Build TypeScript Reference SDK**: `cd sdk/typescript && npm run build`
 - **TypeScript Unit & Integration Tests**: `cd sdk/typescript && npm test`
 - **Run Conformance Suite & TCK**: `node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js`
+- **Run Consumer Integration Test**: `examples/consumer-test/run.sh`
+- **Run Repro Laboratory**: `node repro/run.js`
 
 ---
 
