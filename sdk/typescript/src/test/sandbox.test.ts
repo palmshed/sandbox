@@ -514,7 +514,7 @@ test('Native Backend Sandbox Execution', async (t) => {
     // process.title + pgrep -x avoids Linux pgrep ancestor self-match false positives
     // (see compound-command OOM test). Also avoids ERE pitfalls: `while(true)` is a
     // capturing group, so `pgrep -f "while(true)"` never matched the literal source.
-    const cpuScript = 'process.title="sbx-cpu-wkld"; let x=0; while(true){x++}';
+    const cpuScript = "process.title = 'sbx-cpu-wkld'; let x=0; while(true){x++}";
 
     // 1. CPU limit kill of a background child
     await assert.rejects(
