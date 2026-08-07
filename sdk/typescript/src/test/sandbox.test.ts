@@ -247,5 +247,107 @@ test('Native Backend Sandbox Execution', async (t) => {
 
     await memSandbox.destroy();
   });
+
+  await t.test('resource enforcement: sh -c child memory growth triggers ERR_OOM_EXCEEDED', async (t) => {
+    if (process.platform === 'win32') return t.skip('compound sh syntax is POSIX-only');
+    const { SandboxResourceError } = await import('../index.js');
+    const memSandbox = await Sandbox.create({ backend: 'native' });
+
+    // The shell stays as a low-RSS parent (~2MB); the node child runs in the
+    // background holding ~47MB+. An 8MB limit is above the shell alone but far
+    // below the child, so only group-wide sampling can detect the breach.
+    const allocScript = `
+      const chunks = [];
+      for (let i = 0; i < 200; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
+      setInterval(() => {}, 100);
+    `.replace(/\n\s*/g, ' ');
+
+    await assert.rejects(
+      async () => {
+        await memSandbox.exec(`node -e "${allocScript}" & wait $!`, {
+          memory: '8MB',
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_OOM_EXCEEDED');
+        assert.equal(resErr.resource, 'memory');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    await memSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: pipeline child memory growth triggers ERR_OOM_EXCEEDED', async (t) => {
+    if (process.platform === 'win32') return t.skip('compound sh syntax is POSIX-only');
+    const { SandboxResourceError } = await import('../index.js');
+    const memSandbox = await Sandbox.create({ backend: 'native' });
+
+    const allocScript = `
+      const chunks = [];
+      for (let i = 0; i < 200; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
+      setInterval(() => {}, 100);
+    `.replace(/\n\s*/g, ' ');
+
+    // node is the pipeline producer with a small `cat` consumer; the shell
+    // parent stays tiny. Only group sampling sees the producer's RSS.
+    await assert.rejects(
+      async () => {
+        await memSandbox.exec(`node -e "${allocScript}" | cat`, {
+          memory: '8MB',
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_OOM_EXCEEDED');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    await memSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: sandbox reusable after compound-command OOM kill', async (t) => {
+    if (process.platform === 'win32') return t.skip('compound sh syntax is POSIX-only');
+    const { SandboxResourceError } = await import('../index.js');
+    const memSandbox = await Sandbox.create({ backend: 'native' });
+
+    const allocScript = `
+      const chunks = [];
+      for (let i = 0; i < 200; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
+      setInterval(() => {}, 100);
+    `.replace(/\n\s*/g, ' ');
+
+    // 1. OOM kill of a background child
+    await assert.rejects(
+      async () => {
+        await memSandbox.exec(`node -e "${allocScript}" & wait $!`, {
+          memory: '8MB',
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => err instanceof SandboxResourceError && err.code === 'ERR_OOM_EXCEEDED'
+    );
+
+    // 2. No leaked workload processes remain
+    const leaked = await memSandbox.exec('pgrep -f "Buffer.alloc" || echo "none"');
+    await leaked.wait();
+    assert.match(leaked.stdout(), /none/);
+
+    // 3. Sandbox remains reusable
+    const recovery = await memSandbox.exec('echo "alive after compound oom"');
+    await recovery.wait();
+    assert.equal(recovery.status(), 'completed');
+    assert.match(recovery.stdout(), /alive after compound oom/);
+
+    await memSandbox.destroy();
+  });
 });
 

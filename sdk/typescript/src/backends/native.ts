@@ -69,37 +69,111 @@ export class NativeBackend implements BackendEngine {
       let settled = false;
 
       /**
-       * Sample the RSS of a process in bytes, cross-platform.
-       * Returns -1 if the PID cannot be read (process already exited).
+       * Sample the total RSS of a process group/tree in bytes, cross-platform.
+       * The root PID is the spawned shell (`child.pid`); on POSIX it is also the
+       * process group ID because the child is spawned detached. Sampling the
+       * whole group ensures compound commands (pipelines, background jobs,
+       * chained `sh -c` children) cannot bypass memory enforcement by running
+       * in a descendant process with a small parent shell.
+       * Returns -1 if the group cannot be read (process already exited).
        */
-      const sampleRssBytes = (pid: number): number => {
-        try {
-          const platform = process.platform;
-          if (platform === 'linux') {
-            // /proc/<pid>/status has VmRSS in kB
-            const statusPath = `/proc/${pid}/status`;
-            if (!fssync.existsSync(statusPath)) return -1;
-            const raw = fssync.readFileSync(statusPath, 'utf-8');
-            const match = raw.match(/VmRSS:\s*(\d+)\s*kB/);
-            if (!match) return -1;
-            return parseInt(match[1], 10) * 1024;
-          } else if (platform === 'darwin') {
-            // macOS: ps reports RSS in 1KB blocks
-            const out = execSync(`ps -o rss= -p ${pid}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-            if (!out) return -1;
-            return parseInt(out, 10) * 1024;
-          } else if (platform === 'win32') {
-            // Windows: WMIC WorkingSetSize in bytes
-            const out = execSync(
-              `wmic process where ProcessId=${pid} get WorkingSetSize /value`,
+      const sampleGroupRssBytes = (rootPid: number): number => {
+        const platform = process.platform;
+        if (platform === 'linux') {
+          // Sum VmRSS across every process whose pgrp matches the root PID.
+          let total = 0;
+          let found = false;
+          let entries: string[] = [];
+          try {
+            entries = fssync.readdirSync('/proc').filter((d) => /^\d+$/.test(d));
+          } catch {
+            return -1;
+          }
+          for (const d of entries) {
+            let statRaw: string;
+            try {
+              statRaw = fssync.readFileSync(`/proc/${d}/stat`, 'utf-8');
+            } catch {
+              continue; // process already exited
+            }
+            // comm may contain spaces/parens, so parse after the last ')'
+            const closeParen = statRaw.lastIndexOf(')');
+            if (closeParen === -1) continue;
+            const rest = statRaw.slice(closeParen + 2).split(' ');
+            // rest[0]=state, rest[1]=ppid, rest[2]=pgrp
+            if (parseInt(rest[2], 10) !== rootPid) continue;
+            found = true;
+            try {
+              const status = fssync.readFileSync(`/proc/${d}/status`, 'utf-8');
+              const match = status.match(/VmRSS:\s*(\d+)\s*kB/);
+              if (match) total += parseInt(match[1], 10) * 1024;
+            } catch {
+              // process exited mid-scan
+            }
+          }
+          return found ? total : -1;
+        } else if (platform === 'darwin') {
+          // macOS: ps reports RSS in 1KB blocks; -g selects by process group
+          let out: string;
+          try {
+            out = execSync(`ps -o rss= -g ${rootPid}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+          } catch {
+            return -1; // process group already gone
+          }
+          const lines = out.trim().split('\n').filter(Boolean);
+          if (lines.length === 0) return -1;
+          return lines.reduce((sum, l) => sum + (parseInt(l, 10) || 0), 0) * 1024;
+        } else if (platform === 'win32') {
+          // Windows: WMIC process-tree walk from the root PID. This is polling
+          // based rather than Job Object accounting, so a child that detaches
+          // from the tree can escape accounting. Documented platform limitation.
+          let out: string;
+          try {
+            out = execSync(
+              'wmic process get ProcessId,ParentProcessId,WorkingSetSize /value',
               { stdio: ['ignore', 'pipe', 'ignore'] }
             ).toString();
-            const match = out.match(/WorkingSetSize=(\d+)/);
-            if (!match) return -1;
-            return parseInt(match[1], 10);
+          } catch {
+            return -1;
           }
-        } catch {
-          // Process may have already exited
+          const procs = new Map<number, { ppid: number; rss: number }>();
+          let curPid = 0;
+          let curPpid = 0;
+          let curRss = 0;
+          for (const line of out.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) {
+              if (curPid) procs.set(curPid, { ppid: curPpid, rss: curRss });
+              curPid = 0;
+              curPpid = 0;
+              curRss = 0;
+              continue;
+            }
+            const eq = trimmed.indexOf('=');
+            if (eq === -1) continue;
+            const key = trimmed.slice(0, eq);
+            const val = parseInt(trimmed.slice(eq + 1), 10) || 0;
+            if (key === 'ProcessId') curPid = val;
+            else if (key === 'ParentProcessId') curPpid = val;
+            else if (key === 'WorkingSetSize') curRss = val;
+          }
+          if (curPid) procs.set(curPid, { ppid: curPpid, rss: curRss });
+          // BFS from the root PID summing RSS across the process tree
+          let total = 0;
+          const visited = new Set<number>();
+          const queue = [rootPid];
+          while (queue.length) {
+            const current = queue.shift()!;
+            if (visited.has(current)) continue;
+            visited.add(current);
+            const p = procs.get(current);
+            if (!p) continue;
+            total += p.rss;
+            for (const [childPid, child] of procs) {
+              if (child.ppid === current && !visited.has(childPid)) queue.push(childPid);
+            }
+          }
+          return total;
         }
         return -1;
       };
@@ -165,16 +239,19 @@ export class NativeBackend implements BackendEngine {
         }, timeout);
       }
 
-      // RSS-polling memory enforcement (100ms interval)
+      // RSS-polling memory enforcement (100ms interval). Samples the entire
+      // process group/tree so descendant workloads (pipelines, background jobs,
+      // chained sh -c children) are counted against the limit, not just the
+      // top-level shell process.
       if (memLimitBytes !== null && child.pid !== undefined) {
-        const monitoredPid = child.pid;
+        const monitoredRootPid = child.pid;
         memPoller = setInterval(() => {
           if (settled) {
             clearInterval(memPoller!);
             return;
           }
-          const rss = sampleRssBytes(monitoredPid);
-          if (rss === -1) return; // process already gone
+          const rss = sampleGroupRssBytes(monitoredRootPid);
+          if (rss === -1) return; // process group already gone
           if (rss > memLimitBytes) {
             oomKilled = true;
             clearInterval(memPoller!);
