@@ -14,8 +14,8 @@
 
 ## Current Status & Stability Expectations
 
-- **Current Version**: `v0.1.0-alpha.3`
-- **Stability**: **Pre-release / Alpha**. API contracts and core specifications are undergoing early testing. Breaking changes will follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md).
+- **Current Version**: `v0.2.0` (Phase 2 Complete)
+- **Stability**: **Beta**. Phase 2 capabilities (process lifecycle, resource enforcement, network isolation) are stable and verified across Linux and macOS. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md). See [`ROADMAP.md`](ROADMAP.md) for Phase 3 planning.
 
 ---
 
