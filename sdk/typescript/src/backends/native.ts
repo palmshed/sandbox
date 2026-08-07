@@ -1,9 +1,10 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import * as fs from 'fs/promises';
+import * as fssync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { BackendEngine } from './interface.js';
-import { ExecOptions, ExecResult, SandboxError, SandboxOptions } from '../core/types.js';
+import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError } from '../core/types.js';
 
 export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
@@ -11,7 +12,7 @@ export class NativeBackend implements BackendEngine {
     filesystem: true,
     networkIsolation: false,
     cpuLimits: false,
-    memoryLimits: false,
+    memoryLimits: true,
     streaming: true,
     remoteExecution: false,
   };
@@ -52,12 +53,56 @@ export class NativeBackend implements BackendEngine {
       env.NO_PROXY = '';
     }
 
+    // Parse memory limit: per-execution option takes precedence over sandbox-level option
+    const rawMemoryLimit = options.memory ?? this.options.memory;
+    const memLimitBytes = rawMemoryLimit !== undefined ? this.parseSizeStringToBytes(
+      typeof rawMemoryLimit === 'number' ? String(rawMemoryLimit) : rawMemoryLimit
+    ) : null;
+
     return new Promise((resolve, reject) => {
       let stdoutAcc = '';
       let stderrAcc = '';
       let timedOut = false;
+      let oomKilled = false;
       let timer: NodeJS.Timeout | null = null;
+      let memPoller: NodeJS.Timeout | null = null;
       let settled = false;
+
+      /**
+       * Sample the RSS of a process in bytes, cross-platform.
+       * Returns -1 if the PID cannot be read (process already exited).
+       */
+      const sampleRssBytes = (pid: number): number => {
+        try {
+          const platform = process.platform;
+          if (platform === 'linux') {
+            // /proc/<pid>/status has VmRSS in kB
+            const statusPath = `/proc/${pid}/status`;
+            if (!fssync.existsSync(statusPath)) return -1;
+            const raw = fssync.readFileSync(statusPath, 'utf-8');
+            const match = raw.match(/VmRSS:\s*(\d+)\s*kB/);
+            if (!match) return -1;
+            return parseInt(match[1], 10) * 1024;
+          } else if (platform === 'darwin') {
+            // macOS: ps reports RSS in 1KB blocks
+            const out = execSync(`ps -o rss= -p ${pid}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+            if (!out) return -1;
+            return parseInt(out, 10) * 1024;
+          } else if (platform === 'win32') {
+            // Windows: WMIC WorkingSetSize in bytes
+            const out = execSync(
+              `wmic process where ProcessId=${pid} get WorkingSetSize /value`,
+              { stdio: ['ignore', 'pipe', 'ignore'] }
+            ).toString();
+            const match = out.match(/WorkingSetSize=(\d+)/);
+            if (!match) return -1;
+            return parseInt(match[1], 10);
+          }
+        } catch {
+          // Process may have already exited
+        }
+        return -1;
+      };
 
       const isWin = process.platform === 'win32';
       const shell = isWin ? 'cmd.exe' : '/bin/sh';
@@ -120,6 +165,24 @@ export class NativeBackend implements BackendEngine {
         }, timeout);
       }
 
+      // RSS-polling memory enforcement (100ms interval)
+      if (memLimitBytes !== null && child.pid !== undefined) {
+        const monitoredPid = child.pid;
+        memPoller = setInterval(() => {
+          if (settled) {
+            clearInterval(memPoller!);
+            return;
+          }
+          const rss = sampleRssBytes(monitoredPid);
+          if (rss === -1) return; // process already gone
+          if (rss > memLimitBytes) {
+            oomKilled = true;
+            clearInterval(memPoller!);
+            killProcess('SIGKILL');
+          }
+        }, 100);
+      }
+
       child.stdout?.on('data', (chunk: Buffer) => {
         const str = chunk.toString();
         stdoutAcc += str;
@@ -145,10 +208,26 @@ export class NativeBackend implements BackendEngine {
         settled = true;
         this.activeProcesses.delete(child);
         if (timer) clearTimeout(timer);
+        if (memPoller) clearInterval(memPoller);
         const finishedAtMs = Date.now();
         const durationMs = finishedAtMs - startTime;
         const execId = `exec_${Math.random().toString(36).substring(2, 10)}`;
-        const exitCode = timedOut ? -1 : (code ?? 0);
+        const exitCode = timedOut || oomKilled ? -1 : (code ?? 0);
+
+        if (oomKilled && memLimitBytes !== null) {
+          // Capture final RSS best-effort (process is gone, use limit as observed)
+          reject(new SandboxResourceError(
+            `Memory limit exceeded: process RSS exceeded limit of ${rawMemoryLimit}`,
+            'ERR_OOM_EXCEEDED',
+            {
+              resource: 'memory',
+              limit: rawMemoryLimit!,
+              observed: `>${rawMemoryLimit}`,
+              recoverable: true,
+            }
+          ));
+          return;
+        }
 
         const metadata = {
           id: execId,
@@ -210,7 +289,7 @@ export class NativeBackend implements BackendEngine {
 
     const currentSize = await this.getDirectorySize(this.sandboxDir);
     if (currentSize + additionalBytes > quotaBytes) {
-      const { SandboxResourceError } = await import('../core/types.js');
+      // SandboxResourceError is a direct import at the top of this file
       throw new SandboxResourceError(
         `Disk quota exceeded: current usage ${currentSize + additionalBytes} bytes exceeds limit of ${quotaBytes} bytes`,
         'ERR_DISK_QUOTA_EXCEEDED',

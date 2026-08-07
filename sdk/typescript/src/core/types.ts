@@ -35,6 +35,8 @@ export interface SandboxOptions {
 export interface ExecOptions {
   /** Override default execution timeout for this run (ms) */
   timeout?: number;
+  /** Memory limit for this execution, e.g. "256MB" or bytes. Overrides sandbox-level memory option. */
+  memory?: string | number;
   /** Custom working directory relative to sandbox root */
   workDir?: string;
   /** Environment variables overlay */

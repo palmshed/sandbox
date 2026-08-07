@@ -84,6 +84,8 @@ export class Sandbox {
       result.id = execId;
       result.metadata.id = execId;
       handle._complete(result);
+    }).catch((err) => {
+      handle._fail(err);
     });
 
     return handle;

@@ -49,6 +49,7 @@ export class Execution extends EventEmitter {
   private readonly _createdAt: number;
   private _settled: Promise<void>;
   private _settle!: () => void;
+  private _reject!: (err: unknown) => void;
   /** Kill function registered by the backend once the process is spawned */
   private _killFn: ((signal?: NodeJS.Signals) => void) | null = null;
 
@@ -59,8 +60,9 @@ export class Execution extends EventEmitter {
     super();
     this._status = 'running';
     this._createdAt = Date.now();
-    this._settled = new Promise<void>((resolve) => {
+    this._settled = new Promise<void>((resolve, reject) => {
       this._settle = resolve;
+      this._reject = reject;
     });
   }
 
@@ -204,5 +206,16 @@ export class Execution extends EventEmitter {
     this.emit('exit', result.exitCode, result.timedOut);
     this.emit('progress', { durationMs: result.durationMs });
     this._settle();
+  }
+
+  /**
+   * @internal
+   * Called when the backend rejects an execution (e.g. ERR_OOM_EXCEEDED, ERR_DISK_QUOTA_EXCEEDED).
+   * Sets status to 'failed' and rejects the wait() promise with the original error.
+   */
+  _fail(err: unknown): void {
+    if (this._status !== 'running') return;
+    this._status = 'failed';
+    this._reject(err);
   }
 }

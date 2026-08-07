@@ -167,5 +167,85 @@ test('Native Backend Sandbox Execution', async (t) => {
 
     await quotaSandbox.destroy();
   });
+
+  await t.test('resource enforcement: memory limit normal execution completes', async () => {
+    // Allocate a sandbox with a generous 256MB limit — a simple echo should fit easily
+    const memSandbox = await Sandbox.create({ backend: 'native', memory: '256MB' });
+
+    const execution = await memSandbox.exec('echo "memory check"');
+    await execution.wait();
+
+    assert.equal(execution.status(), 'completed');
+    assert.match(execution.stdout(), /memory check/);
+
+    await memSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: memory limit exceeded throws ERR_OOM_EXCEEDED', async () => {
+    const { SandboxResourceError } = await import('../index.js');
+
+    // Use an absurdly small limit (1MB) to deterministically trigger OOM on a Node allocation
+    const memSandbox = await Sandbox.create({ backend: 'native' });
+
+    // A Node.js process that allocates ~50MB deliberately
+    const allocScript = `
+      const chunks = [];
+      for (let i = 0; i < 50; i++) {
+        chunks.push(Buffer.alloc(1024 * 1024)); // 1MB per push
+      }
+      // Hold allocations and keep running so the poller can detect the breach
+      setInterval(() => {}, 100);
+    `.replace(/\n\s*/g, ' ');
+
+    await assert.rejects(
+      async () => {
+        // 1MB limit — should be breached within the first few allocations
+        await memSandbox.exec(`node -e "${allocScript}"`, {
+          memory: '1MB',
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_OOM_EXCEEDED');
+        assert.equal(resErr.resource, 'memory');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    await memSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: sandbox stays healthy after OOM kill', async () => {
+    const { SandboxResourceError } = await import('../index.js');
+    const memSandbox = await Sandbox.create({ backend: 'native' });
+
+    const allocScript = `
+      const chunks = [];
+      for (let i = 0; i < 50; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
+      setInterval(() => {}, 100);
+    `.replace(/\n\s*/g, ' ');
+
+    // 1. Trigger OOM
+    await assert.rejects(
+      async () => {
+        await memSandbox.exec(`node -e "${allocScript}"`, {
+          memory: '1MB',
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => err instanceof SandboxResourceError && err.code === 'ERR_OOM_EXCEEDED'
+    );
+
+    // 2. Sandbox remains healthy: a subsequent execution succeeds without errors
+    const recovery = await memSandbox.exec('echo "sandbox alive"');
+    await recovery.wait();
+    assert.equal(recovery.status(), 'completed');
+    assert.match(recovery.stdout(), /sandbox alive/);
+
+    await memSandbox.destroy();
+  });
 });
 
