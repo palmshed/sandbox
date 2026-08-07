@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { Readable } from 'stream';
 import { ExecResult, ExecutionMetadata } from './types.js';
 
 export type ExecutionStatus =
@@ -19,20 +20,26 @@ export interface ExecutionEvents {
 /**
  * Represents a live execution inside a Sandbox.
  *
- * Supports state transitions:
- *   running → completed | failed | cancelled | timedout
+ * State transitions:  running → completed | failed | cancelled | timedout
  *
  * @example
  * const execution = await sandbox.exec("npm test");
  *
- * execution.on("stdout", (line) => process.stdout.write(line));
- * execution.on("exit", (code) => console.log("Exit:", code));
+ * execution.on("stdout", (chunk) => process.stdout.write(chunk));
+ * execution.on("exit",   (code)  => console.log("Exit:", code));
  *
  * await execution.wait();
- * console.log(execution.status());    // "completed"
- * console.log(execution.metadata());  // full structured payload
- * console.log(execution.result());    // ExecResult
- * console.log(execution.logs());      // combined stdout+stderr
+ *
+ * console.log(execution.status());   // "completed"
+ * console.log(execution.exitCode);   // 0
+ * console.log(execution.stdout());   // accumulated string (stream-safe for future)
+ * console.log(execution.stderr());   // accumulated string
+ * console.log(execution.logs());     // stdout + stderr combined
+ * console.log(execution.metadata()); // { id, backend, specVersion, startedAt, ... }
+ * console.log(execution.result());   // raw ExecResult
+ *
+ * // Stream-oriented (forward-compatible with large/remote outputs)
+ * const s = execution.stdoutStream(); // Node.js Readable
  */
 export class Execution extends EventEmitter {
   private _status: ExecutionStatus;
@@ -62,7 +69,7 @@ export class Execution extends EventEmitter {
     return this._id;
   }
 
-  /** Stable URI for cross-service identification */
+  /** Stable cross-service URI: `sandbox://execution/<id>` */
   get uri(): string {
     return `sandbox://execution/${this._id}`;
   }
@@ -79,53 +86,80 @@ export class Execution extends EventEmitter {
     return this._settled;
   }
 
-  // ── Results ────────────────────────────────────────────────────────────
+  // ── Convenience scalar properties ─────────────────────────────────────
+
+  /** Process exit code; -1 while still running */
+  get exitCode(): number {
+    return this._result?.exitCode ?? -1;
+  }
+
+  /** Duration in milliseconds; live elapsed time while still running */
+  get durationMs(): number {
+    return this._result?.durationMs ?? Date.now() - this._createdAt;
+  }
+
+  /** True if execution timed out */
+  get timedOut(): boolean {
+    return this._result?.timedOut ?? false;
+  }
+
+  // ── Output methods (string, forward-compatible with streaming) ────────
+
+  /**
+   * Returns accumulated stdout as a string.
+   * Prefer `on("stdout", …)` for real-time consumption.
+   * Future: may return a ReadableStream for large/remote outputs.
+   */
+  stdout(): string {
+    return this._stdoutLog.join('');
+  }
+
+  /**
+   * Returns accumulated stderr as a string.
+   * Prefer `on("stderr", …)` for real-time consumption.
+   */
+  stderr(): string {
+    return this._stderrLog.join('');
+  }
+
+  /** Returns stdout + stderr interleaved as a single string */
+  logs(): string {
+    return [...this._stdoutLog, ...this._stderrLog].join('');
+  }
+
+  /**
+   * Returns a Node.js Readable stream over accumulated stdout.
+   * Provides forward-compatibility for large or remotely-stored outputs.
+   */
+  stdoutStream(): Readable {
+    return Readable.from(this._stdoutLog.join(''));
+  }
+
+  /**
+   * Returns a Node.js Readable stream over accumulated stderr.
+   */
+  stderrStream(): Readable {
+    return Readable.from(this._stderrLog.join(''));
+  }
+
+  // ── Structured results ─────────────────────────────────────────────────
 
   /** Structured execution metadata (available once settled) */
   metadata(): ExecutionMetadata | null {
     return this._result?.metadata ?? null;
   }
 
-  /** Full ExecResult payload (available once settled) */
-  /** Shortcut: process exit code (null while running) */
-  get exitCode(): number {
-    return this._result?.exitCode ?? -1;
-  }
-
-  /** Shortcut: accumulated stdout string */
-  get stdout(): string {
-    return this._stdoutLog.join('');
-  }
-
-  /** Shortcut: accumulated stderr string */
-  get stderr(): string {
-    return this._stderrLog.join('');
-  }
-
-  /** Shortcut: durationMs from result */
-  get durationMs(): number {
-    return this._result?.durationMs ?? Date.now() - this._createdAt;
-  }
-
-  /** Shortcut: whether execution timed out */
-  get timedOut(): boolean {
-    return this._result?.timedOut ?? false;
-  }
-
+  /** Full raw ExecResult payload (available once settled) */
   result(): ExecResult | null {
     return this._result;
-  }
-
-  /** Combined stdout + stderr log lines */
-  logs(): string {
-    return [...this._stdoutLog, ...this._stderrLog].join('');
   }
 
   // ── Signals ───────────────────────────────────────────────────────────
 
   /**
-   * Cancel the execution. Currently signals via status transition.
-   * Future: sends SIGTERM/SIGKILL to the backing process or remote endpoint.
+   * Cancel the execution.
+   * Currently signals via status transition.
+   * Future: sends SIGTERM/SIGKILL to the backing process or remote daemon.
    */
   async cancel(): Promise<void> {
     if (this._status !== 'running') return;
@@ -134,7 +168,7 @@ export class Execution extends EventEmitter {
     this._settle();
   }
 
-  // ── Internal (called by backends) ─────────────────────────────────────
+  // ── Internal (called by backends/Sandbox) ─────────────────────────────
 
   /** @internal */
   _onStdout(chunk: string): void {

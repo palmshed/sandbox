@@ -29,7 +29,7 @@ const sandbox = await Sandbox.create({
 });
 
 const res = await sandbox.exec("node -v");
-console.log(res.stdout);
+console.log(res.stdout());
 
 await sandbox.destroy();
 ```

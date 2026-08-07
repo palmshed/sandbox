@@ -23,7 +23,7 @@ test('Native Backend Sandbox Execution', async (t) => {
 
     assert.equal(execution.status(), 'completed');
     assert.equal(execution.exitCode, 0);
-    assert.match(execution.stdout, /Hello Palmshed Sandbox/);
+    assert.match(execution.stdout(), /Hello Palmshed Sandbox/);
   });
 
   await t.test('populates structured metadata after wait()', async () => {

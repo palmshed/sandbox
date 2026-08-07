@@ -28,7 +28,7 @@ test('Conformance Suite: Core Spec Verification (TypeScript SDK) [Spec-Version: 
     const execution = await sandbox.exec('echo "Compliance Test"');
     await execution.wait();
     assert.equal(execution.exitCode, 0);
-    assert.equal(typeof execution.stdout, 'string');
+    assert.equal(typeof execution.stdout(), 'string');
     assert.equal(execution.timedOut, false);
   });
 

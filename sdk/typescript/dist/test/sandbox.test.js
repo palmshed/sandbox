@@ -56,7 +56,7 @@ const index_js_1 = require("../index.js");
         await execution.wait();
         strict_1.default.equal(execution.status(), 'completed');
         strict_1.default.equal(execution.exitCode, 0);
-        strict_1.default.match(execution.stdout, /Hello Palmshed Sandbox/);
+        strict_1.default.match(execution.stdout(), /Hello Palmshed Sandbox/);
     });
     await t.test('populates structured metadata after wait()', async () => {
         const execution = await sandbox.exec('echo "Metadata Test"');
