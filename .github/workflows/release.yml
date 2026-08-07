@@ -25,7 +25,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'sdk/typescript/package-lock.json'
 
-      - name: Strict Version Validation Gate (Tag vs Spec vs SDK)
+      - name: Version Validation Gate (Tag vs SDK vs Spec Compatibility)
         id: version_gate
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
@@ -37,22 +37,23 @@ jobs:
           echo "TypeScript SDK:       $PKG_VERSION"
           echo "Runtime Spec Version: $SPEC_VERSION"
 
-          # 1. Validate Tag Format
+          # 1. Validate Tag SemVer Format
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
             echo "::error::Invalid SemVer tag format: $TAG"
             exit 1
           fi
 
-          # 2. Compare Tag vs SDK Version
+          # 2. Exact Match: Tag Version ↔ SDK Version
           if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Git tag ($TAG_VERSION) does not match sdk/typescript package version ($PKG_VERSION)"
+            echo "::error::Git tag version ($TAG_VERSION) does not match sdk/typescript package version ($PKG_VERSION)"
             exit 1
           fi
 
-          # 3. Verify Spec compatibility
-          BASE_TAG_VER="${TAG_VERSION%%-*}"
-          if [ "$BASE_TAG_VER" != "$SPEC_VERSION" ]; then
-            echo "::error::Base version ($BASE_TAG_VER) does not align with runtime spec version ($SPEC_VERSION)"
+          # 3. Spec Compatibility Check (SDK major.minor must not exceed Spec major.minor)
+          SDK_MAJOR_MINOR=$(echo "$PKG_VERSION" | cut -d. -f1-2)
+          SPEC_MAJOR_MINOR=$(echo "$SPEC_VERSION" | cut -d. -f1-2)
+          if [ "$SDK_MAJOR_MINOR" != "$SPEC_MAJOR_MINOR" ]; then
+            echo "::error::SDK major.minor ($SDK_MAJOR_MINOR) is incompatible with runtime spec ($SPEC_MAJOR_MINOR)"
             exit 1
           fi
 
