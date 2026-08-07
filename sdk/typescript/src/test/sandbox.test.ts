@@ -99,4 +99,22 @@ test('Native Backend Sandbox Execution', async (t) => {
     await fs.rm(tmpLocalSrc, { force: true });
     await fs.rm(tmpLocalDst, { force: true });
   });
+
+  await t.test('lifecycle: kills nested child processes on timeout and destroy', async () => {
+    const isWin = process.platform === 'win32';
+    // Spawn nested process (sh -> node child -> node grandchild)
+    const script = `
+      const { spawn } = require('child_process');
+      const child = spawn('node', ['-e', 'setInterval(() => {}, 1000)']);
+      setInterval(() => {}, 1000);
+    `;
+    const execution = await sandbox.exec(`node -e "${script.replace(/\n/g, ' ')}"`, {
+      timeout: 300,
+    });
+
+    await execution.wait();
+    assert.equal(execution.status(), 'timedout');
+    assert.equal(execution.metadata()!.timedOut, true);
+  });
 });
+
