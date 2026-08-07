@@ -1,0 +1,5 @@
+# .gitignore for palmshed/sandbox
+node_modules/
+dist/
+*.log
+.DS_Store
