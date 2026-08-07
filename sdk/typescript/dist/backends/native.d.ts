@@ -12,6 +12,8 @@ export declare class NativeBackend implements BackendEngine {
     };
     private sandboxDir;
     private options;
+    /** Active child processes — killed on destroy() */
+    private activeProcesses;
     init(options: SandboxOptions): Promise<void>;
     exec(command: string, options?: ExecOptions): Promise<ExecResult>;
     private resolveSandboxPath;

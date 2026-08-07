@@ -51,6 +51,8 @@ class NativeBackend {
     };
     sandboxDir = '';
     options;
+    /** Active child processes — killed on destroy() */
+    activeProcesses = new Set();
     async init(options) {
         this.options = options;
         // Create an isolated temporary working directory for native execution
@@ -83,7 +85,7 @@ class NativeBackend {
             let stderrAcc = '';
             let timedOut = false;
             let timer = null;
-            // Execute command in shell cross-platform
+            let settled = false;
             const isWin = process.platform === 'win32';
             const shell = isWin ? 'cmd.exe' : '/bin/sh';
             const shellFlag = isWin ? '/s /c' : '-c';
@@ -91,14 +93,47 @@ class NativeBackend {
                 cwd,
                 env,
                 stdio: ['pipe', 'pipe', 'pipe'],
+                // Use a process group so we can kill descendants too (non-Windows)
+                detached: !isWin,
             });
+            this.activeProcesses.add(child);
+            /**
+             * Kill the process gracefully: SIGTERM first, then SIGKILL after 1s if
+             * the process hasn't exited. On Windows, fall back to kill() directly.
+             */
+            const killProcess = (signal = 'SIGTERM') => {
+                if (settled)
+                    return;
+                try {
+                    if (!isWin && child.pid !== undefined) {
+                        // Negative PID targets the entire process group
+                        process.kill(-child.pid, signal);
+                    }
+                    else {
+                        child.kill(signal);
+                    }
+                    if (signal === 'SIGTERM') {
+                        setTimeout(() => {
+                            if (!settled)
+                                killProcess('SIGKILL');
+                        }, 1000);
+                    }
+                }
+                catch {
+                    // Process may have already exited
+                }
+            };
+            // Expose kill function to the Execution handle via Sandbox.exec()
+            if (options.onProcessSpawned) {
+                options.onProcessSpawned(killProcess);
+            }
             if (options.stdin && child.stdin) {
                 options.stdin.pipe(child.stdin);
             }
             if (timeout > 0) {
                 timer = setTimeout(() => {
                     timedOut = true;
-                    child.kill('SIGKILL');
+                    killProcess('SIGKILL');
                 }, timeout);
             }
             child.stdout?.on('data', (chunk) => {
@@ -118,11 +153,15 @@ class NativeBackend {
                     options.stderr.write(chunk);
             });
             child.on('error', (err) => {
+                settled = true;
+                this.activeProcesses.delete(child);
                 if (timer)
                     clearTimeout(timer);
                 reject(new types_js_1.SandboxError(`Execution failed: ${err.message}`, 'EXEC_FAILED', err));
             });
             child.on('close', (code) => {
+                settled = true;
+                this.activeProcesses.delete(child);
                 if (timer)
                     clearTimeout(timer);
                 const finishedAtMs = Date.now();
@@ -178,6 +217,22 @@ class NativeBackend {
         await fs.copyFile(source, localPath);
     }
     async destroy() {
+        // Kill all active child processes before cleaning up the sandbox directory
+        for (const child of this.activeProcesses) {
+            try {
+                const isWin = process.platform === 'win32';
+                if (!isWin && child.pid !== undefined) {
+                    process.kill(-child.pid, 'SIGKILL');
+                }
+                else {
+                    child.kill('SIGKILL');
+                }
+            }
+            catch {
+                // Process may have already exited
+            }
+        }
+        this.activeProcesses.clear();
         if (this.sandboxDir) {
             await fs.rm(this.sandboxDir, { recursive: true, force: true });
         }

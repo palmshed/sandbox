@@ -43,6 +43,13 @@ export interface ExecOptions {
     onStdout?: (data: string) => void;
     /** Callback fired for real-time stderr chunks */
     onStderr?: (data: string) => void;
+    /**
+     * Called by the backend once the child process is spawned.
+     * The provided `kill` function sends SIGTERM then SIGKILL to the process.
+     * Used by Execution.cancel() and Sandbox.destroy() to terminate live processes.
+     * @internal
+     */
+    onProcessSpawned?: (kill: (signal?: NodeJS.Signals) => void) => void;
 }
 export interface ExecutionMetadata {
     id: string;

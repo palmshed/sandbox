@@ -72,6 +72,12 @@ export class Sandbox {
         handle._onStderr(chunk);
         options.onStderr?.(chunk);
       },
+      // Backend calls this once the child process is spawned.
+      // We pass the kill function to the Execution handle so cancel()
+      // and destroy()-during-execution can terminate the real process.
+      onProcessSpawned: (kill) => {
+        handle._registerKill(kill);
+      },
     };
 
     this.backendEngine.exec(command, wrappedOptions).then((result) => {

@@ -86,6 +86,6 @@ This allows SDKs to adapt gracefully without embedding backend-specific conditio
 ## Coding & Architectural Conventions
 
 - **Specification First**: Any modification to data structures or execution behavior MUST start with an update to `spec/` schemas and `spec/version.md`.
-- **Capability Negotiation Principle**: Prefer adding capabilities over changing existing behavior. If a backend cannot support a feature, expose that through capability negotiation rather than introducing backend-specific APIs. Feature availability must be queried via `sandbox.capabilities` or `backend.capabilities`.
+- **Capability Negotiation Principle**: Prefer adding capabilities over changing existing behavior. A capability flag MUST NOT be marked `true` unless it is backed by verified native implementation, documented failure states, and integration test coverage. Feature availability must be queried via `sandbox.capabilities` or `backend.capabilities`.
 - **Agent Neutrality**: Sandbox engines know nothing about LLM prompts or agent frameworks. AI tools (e.g. `mull`, `kit`, `predicate`) consume the SDK.
 - **AGENTS.md Maintenance**: Whenever folder structures, specification schemas, or SDK layouts are modified, this `AGENTS.md` file MUST be updated in the exact same commit.

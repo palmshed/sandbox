@@ -49,6 +49,8 @@ export class Execution extends EventEmitter {
   private readonly _createdAt: number;
   private _settled: Promise<void>;
   private _settle!: () => void;
+  /** Kill function registered by the backend once the process is spawned */
+  private _killFn: ((signal?: NodeJS.Signals) => void) | null = null;
 
   constructor(
     private readonly _id: string,
@@ -158,17 +160,24 @@ export class Execution extends EventEmitter {
 
   /**
    * Cancel the execution.
-   * Currently signals via status transition.
-   * Future: sends SIGTERM/SIGKILL to the backing process or remote daemon.
+   * Sends SIGTERM to the process group, then SIGKILL after 1s if still running.
    */
   async cancel(): Promise<void> {
     if (this._status !== 'running') return;
     this._status = 'cancelled';
     this.emit('cancelled');
+    if (this._killFn) {
+      this._killFn('SIGTERM');
+    }
     this._settle();
   }
 
   // ── Internal (called by backends/Sandbox) ─────────────────────────────
+
+  /** @internal Register the process kill function provided by the backend */
+  _registerKill(fn: (signal?: NodeJS.Signals) => void): void {
+    this._killFn = fn;
+  }
 
   /** @internal */
   _onStdout(chunk: string): void {
