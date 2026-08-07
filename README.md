@@ -3,6 +3,7 @@
 [![CI](https://github.com/palmshed/sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/palmshed/sandbox/actions/workflows/ci.yml)
 [![Security Audit](https://github.com/palmshed/sandbox/actions/workflows/security.yml/badge.svg)](https://github.com/palmshed/sandbox/actions/workflows/security.yml)
 [![Compliance & TCK](https://github.com/palmshed/sandbox/actions/workflows/compliance.yml/badge.svg)](https://github.com/palmshed/sandbox/actions/workflows/compliance.yml)
+[![Consumer Test](https://github.com/palmshed/sandbox/actions/workflows/consumer-test.yml/badge.svg)](https://github.com/palmshed/sandbox/actions/workflows/consumer-test.yml)
 [![Latest Release](https://img.shields.io/github/v/release/palmshed/sandbox?include_prereleases&label=release)](https://github.com/palmshed/sandbox/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -16,7 +17,8 @@
 
 - **SDK Release Version**: `v0.1.0-beta.1` (Phase 2 complete: process lifecycle, resource enforcement, network isolation)
 - **Runtime Specification**: `0.1.1` (see [`spec/version.md`](spec/version.md))
-- **Stability**: **Beta**. All Phase 2 capabilities are implemented and verified across Linux and macOS. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md). The SDK release version and runtime specification version are managed independently: the SDK advances through pre-release versions (alpha → beta → rc → stable) while the specification version reflects contract changes only.
+- **Stability**: **Beta**. All Phase 2 capabilities are implemented and verified. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md). The SDK release version and runtime specification version are managed independently: the SDK advances through pre-release versions (alpha → beta → rc → stable) while the specification version reflects contract changes only.
+- **Network isolation note**: On macOS, `networkIsolation` is `true` (5/5 adversarial leak tests pass). On Linux, it is dynamically probed at `init()` -- `true` when unprivileged user namespaces are available, `false` on CI runners where they are restricted (falls back to proxy env vars).
 
 ---
 
