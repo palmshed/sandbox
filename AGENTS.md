@@ -33,7 +33,7 @@ sandbox/
 │   ├── deprecations.md    # Field deprecation schedule
 │   └── version.md         # Specification versioning
 ├── rfcs/                  # Architectural RFCs explaining design choices
-│   ├── 0004-network-isolation.md # Native network isolation design (Proposed)
+│   ├── 0004-network-isolation.md # Native network isolation design (Accepted)
 ├── tck/                   # Technology Compatibility Kit for external certification
 │   ├── lifecycle/
 │   ├── filesystem/
@@ -84,7 +84,7 @@ Every execution backend reports supported features dynamically via `capabilities
 `cpuLimits` reflects CPU **time** budget enforcement (Linux/macOS: supported via process-group sampling; Windows: best-effort WMIC polling). The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
 
 `networkIsolation` is now `true` with platform-specific implementation:
-- **Linux**: Uses `unshare -n` for isolated network namespace
+- **Linux**: Uses `unshare -n --user --map-root-user` for isolated network namespace (unprivileged user namespace, no root required)
 - **macOS**: Uses `sandbox-exec` with Seatbelt profile (note: deprecated by Apple; documented limitation in RFC 0004)
 - **Windows**: Unsupported (network tests skip on Windows)
 

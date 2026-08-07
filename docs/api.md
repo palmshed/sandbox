@@ -45,7 +45,7 @@ Reports which features the active backend supports. Check before calling optiona
 const caps = sandbox.capabilities;
 // {
 //   filesystem: true,
-//   networkIsolation: false,
+//   networkIsolation: true,
 //   cpuLimits: true,
 //   memoryLimits: true,
 //   streaming: true,

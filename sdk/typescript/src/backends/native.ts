@@ -10,7 +10,7 @@ export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
   public readonly capabilities = {
     filesystem: true,
-    networkIsolation: true,  // Linux (unshare -n) and macOS (sandbox-exec) verified; Windows unsupported
+    networkIsolation: true,  // Linux (unshare --user --map-root-user -n) and macOS (sandbox-exec) verified; Windows unsupported
     cpuLimits: true,
     memoryLimits: true,
     streaming: true,
@@ -328,7 +328,9 @@ export class NativeBackend implements BackendEngine {
 
       /**
        * RFC 0004: Network isolation for `network: 'disabled'`.
-       * On Linux, use `unshare -n` to create an isolated network namespace.
+       * On Linux, use `unshare -n --user --map-root-user` to create an isolated
+       * network namespace without requiring root privileges (unprivileged user
+       * namespaces provide the CAP_SYS_ADMIN needed to also create the netns).
        * On macOS, use `sandbox-exec` with a Seatbelt profile (deprecated but working).
        * On Windows, network isolation is Unsupported (no-op).
        */
@@ -338,7 +340,7 @@ export class NativeBackend implements BackendEngine {
       if (this.options.network === 'disabled') {
         if (process.platform === 'linux') {
           spawnShell = '/bin/sh';
-          spawnArgs = ['-c', `unshare -n -- /bin/sh -c ${JSON.stringify(command)}`];
+          spawnArgs = ['-c', `unshare -n --user --map-root-user -- /bin/sh -c ${JSON.stringify(command)}`];
         } else if (process.platform === 'darwin') {
           const sbProfile = '(version 1) (allow default) (deny network*)';
           spawnShell = '/usr/bin/sandbox-exec';

@@ -2,12 +2,11 @@
  * Demonstrates: `network: 'disabled'` blocks outbound TCP.
  *
  * A workload inside a sandbox created with network: 'disabled' must be unable
- * to open an outbound TCP connection to a non-loopback host. Currently the
- * Native backend does NOT enforce this (networkIsolation is false; only proxy
- * env vars are set), so this repro is RED until RFC 0004 lands.
+ * to open an outbound TCP connection to a non-loopback host. RFC 0004 implements
+ * this via `unshare -n --user --map-root-user` on Linux and `sandbox-exec` on macOS.
  *
  * Expected (guarantee holds): connect fails; exit code 0.
- * Current (violated): connect succeeds; exit code 1.
+ * Violated (if isolation broken): connect succeeds; exit code 1.
  */
 'use strict';
 

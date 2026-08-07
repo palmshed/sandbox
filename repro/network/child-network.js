@@ -3,10 +3,11 @@
  *
  * Child processes spawned inside an isolated sandbox must inherit the network
  * isolation. A background child (sh -c & wait) or pipeline child must not be
- * able to access the network.
+ * able to access the network. RFC 0004 applies the network namespace to the
+ * entire process group, so descendants inherit the isolation.
  *
  * Expected (guarantee holds): child connects fail; exit code 0.
- * Current (before implementation): child connects succeed; exit code 1.
+ * Violated (if isolation broken): child connects succeed; exit code 1.
  */
 'use strict';
 

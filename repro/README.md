@@ -26,7 +26,7 @@ repro/
 ├── memory/   # RSS/memory limit enforcement
 ├── process/  # lifecycle: signal handling, nested trees, destroy
 ├── disk/     # virtual filesystem disk quota
-└── network/  # network isolation (red until RFC 0004 lands)
+└── network/  # network isolation repros (RFC 0004 implemented)
 ```
 
 ## Bug / Guarantee Workflow
@@ -54,7 +54,7 @@ issue → minimal reproduction → failing test → fix → regression test
 | `memory/` | Green: memory enforcement is implemented and validated |
 | `process/`| Green: lifecycle guarantees are implemented |
 | `disk/`   | Green: disk quota is implemented |
-| `network/`| **Red**: `network: 'disabled'` is not yet enforced by the Native backend (see `rfcs/0004-network-isolation.md`). These repros document the open gap and will flip green when isolation lands. |
+| `network/`| **Green**: `network: 'disabled'` is enforced by the Native backend via `unshare -n --user --map-root-user` (Linux) and `sandbox-exec` (macOS). See `rfcs/0004-network-isolation.md`. |
 
 ## Notes
 

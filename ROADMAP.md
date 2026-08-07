@@ -81,7 +81,7 @@ Before marking security and resource enforcement capabilities complete, the proj
 - [x] Security threat model document (RFC 0004 threat model defined; 8 guarantees verified)
 - [x] Native backend isolation design decision (`rfcs/0004-network-isolation.md`)
 - [x] Native backend `network: 'disabled'` implementation:
-  - Linux: `unshare -n` network namespace isolation (commit `9b9c3f1`)
+  - Linux: `unshare -n --user --map-root-user` network namespace isolation (commit `9b9c3f1`, fixed for unprivileged CI)
   - macOS: `sandbox-exec` with Seatbelt profile (commit `9b9c3f1`, deprecation risk documented)
   - Windows: Unsupported (documented in platform matrix)
 - [x] Adversarial network leak test suite (5/5 PASS):

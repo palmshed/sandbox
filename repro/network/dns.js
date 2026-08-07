@@ -2,11 +2,12 @@
  * Demonstrates: `network: 'disabled'` blocks DNS resolution.
  *
  * A workload inside a sandbox created with network: 'disabled' must be unable
- * to resolve hostnames (A/AAAA). Currently the Native backend does NOT enforce
- * this (networkIsolation is false), so this repro is RED until RFC 0004 lands.
+ * to resolve hostnames (A/AAAA). RFC 0004 implements this via
+ * `unshare -n --user --map-root-user` on Linux and `sandbox-exec` on macOS,
+ * which isolates the network namespace and blocks all external name resolution.
  *
  * Expected (guarantee holds): resolve fails; exit code 0.
- * Current (violated): resolve succeeds; exit code 1.
+ * Violated (if isolation broken): resolve succeeds; exit code 1.
  */
 'use strict';
 

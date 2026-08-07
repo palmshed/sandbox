@@ -2,11 +2,11 @@
  * Demonstrates: `network: 'disabled'` blocks outbound UDP.
  *
  * A workload inside a sandbox created with network: 'disabled' must be unable
- * to send UDP packets to external hosts. This repro is RED until network
- * isolation is implemented.
+ * to send UDP packets to external hosts. RFC 0004 implements this via
+ * `unshare -n --user --map-root-user` on Linux and `sandbox-exec` on macOS.
  *
  * Expected (guarantee holds): send fails; exit code 0.
- * Current (before implementation): send succeeds; exit code 1.
+ * Violated (if isolation broken): send succeeds; exit code 1.
  */
 'use strict';
 

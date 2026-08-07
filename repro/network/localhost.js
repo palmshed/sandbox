@@ -3,11 +3,11 @@
  *
  * A workload inside a sandbox created with network: 'disabled' must be unable
  * to reach host services listening on 127.0.0.1 (databases, agent APIs, dev
- * servers). Currently the Native backend does NOT enforce this, so this repro
- * is RED until RFC 0004 lands.
+ * servers). RFC 0004 implements this via `unshare -n --user --map-root-user`
+ * on Linux (the netns loopback is isolated and down) and `sandbox-exec` on macOS.
  *
  * Expected (guarantee holds): connect to localhost service fails; exit 0.
- * Current (violated): connect succeeds; exit 1.
+ * Violated (if isolation broken): connect succeeds; exit 1.
  */
 'use strict';
 

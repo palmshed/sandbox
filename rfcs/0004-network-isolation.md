@@ -1,7 +1,7 @@
 # RFC 0004: Native Network Isolation
 
 - **Author**: Palmshed Team
-- **Status**: Proposed
+- **Status**: Accepted
 - **Created**: 2026-08-08
 - **Specifies**: `network` policy `disabled` on the Native backend (`spec/sandbox.schema.json`, `capabilities.schema.json` `networkIsolation`)
 
@@ -91,7 +91,7 @@ All six in-scope vectors are blocked. Notably `(deny network*)` also blocks loop
 | cgroup `net_cls`/`net_prio` | Does not block traffic; classification only | Not an isolation mechanism; rejected. |
 | `nftables`/`iptables` per-process owner match | Needs root | Rejected for unprivileged runtime. |
 
-Probe outcomes to confirm on an Ubuntu target before implementation: unprivileged `unshare --user --map-root-user` and `unshare --net`, and AppArmor confinement of the node runtime. Marked **pending validation**.
+Probe outcomes to confirm on an Ubuntu target before implementation: unprivileged `unshare --user --map-root-user` and `unshare --net`, and AppArmor confinement of the node runtime. Validated on GitHub Actions `ubuntu-latest`: `unshare -n --user --map-root-user` succeeds without root.
 
 ### Candidate mechanisms: Windows
 
@@ -110,7 +110,7 @@ No unprivileged equivalent to macOS Seatbelt or Linux netns exists on Windows to
 | Platform | Mechanism | Status |
 |---|---|---|
 | macOS | Seatbelt profile via `sandbox-exec`, `(allow default)(deny network*)` | **Supported** (validated 2026-08-08, macOS 26.5.2) |
-| Linux | Network namespace (loopback-only) | **Proposed**; pending Ubuntu validation |
+| Linux | Network namespace (loopback-only) | **Supported** (validated on Ubuntu via `unshare --user --map-root-user`) |
 | Windows | None (WFP/firewall require admin) | **Unsupported** until a restricted-token Job Object path is validated |
 
 ### Contract
@@ -134,9 +134,9 @@ No unprivileged equivalent to macOS Seatbelt or Linux netns exists on Windows to
 
 | Platform | Status | Mechanism | Validation |
 |---|---|---|---|
-| macOS | Supported | Seatbelt `(deny network*)` | Adversarial leak tests on macOS 26.x |
-| Linux | Supported (pending) | Loopback-only network namespace | Adversarial leak tests on Ubuntu |
-| Windows | Unsupported | none | Documented; restricted-token Job Object is a candidate |
+| macOS | Supported | Seatbelt `(deny network*)` via `sandbox-exec` | Adversarial leak tests on macOS 26.x |
+| Linux | Supported | Loopback-only network namespace via `unshare -n --user --map-root-user` | Adversarial leak tests + CI on Ubuntu |
+| Windows | Unsupported | None | Documented; restricted-token Job Object is a candidate |
 
 ## Adversarial Leak Tests (to implement)
 
