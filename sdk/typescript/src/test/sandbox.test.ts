@@ -342,7 +342,13 @@ test('Native Backend Sandbox Execution', async (t) => {
     const { SandboxResourceError } = await import('../index.js');
     const memSandbox = await Sandbox.create({ backend: 'native' });
 
+    // process.title gives a stable, short comm name for leak checks. Do NOT use
+    // `pgrep -f "Buffer.alloc"`: on Linux, pgrep does not exclude ancestors, so
+    // the checker shell (`sh -c 'pgrep -f Buffer.alloc ...'`) self-matches and
+    // false-positives as a "leaked" PID. macOS pgrep excludes ancestors, which
+    // is why this only failed on GitHub Actions Linux runners.
     const allocScript = `
+      process.title = 'sbx-oom-wkld';
       setTimeout(() => {
         const chunks = [];
         for (let i = 0; i < 200; i++) {
@@ -365,8 +371,8 @@ test('Native Backend Sandbox Execution', async (t) => {
       (err: unknown) => err instanceof SandboxResourceError && err.code === 'ERR_OOM_EXCEEDED'
     );
 
-    // 2. No leaked workload processes remain
-    const leaked = await memSandbox.exec('pgrep -f "Buffer.alloc" || echo "none"');
+    // 2. No leaked workload processes remain (exact comm match; no self-match)
+    const leaked = await memSandbox.exec('pgrep -x sbx-oom-wkld || echo "none"');
     await leaked.wait();
     assert.match(leaked.stdout(), /none/);
 
@@ -505,10 +511,15 @@ test('Native Backend Sandbox Execution', async (t) => {
     const { SandboxResourceError } = await import('../index.js');
     const cpuSandbox = await Sandbox.create({ backend: 'native' });
 
+    // process.title + pgrep -x avoids Linux pgrep ancestor self-match false positives
+    // (see compound-command OOM test). Also avoids ERE pitfalls: `while(true)` is a
+    // capturing group, so `pgrep -f "while(true)"` never matched the literal source.
+    const cpuScript = 'process.title="sbx-cpu-wkld"; let x=0; while(true){x++}';
+
     // 1. CPU limit kill of a background child
     await assert.rejects(
       async () => {
-        await cpuSandbox.exec('node -e "let x=0; while(true){x++}" & wait $!', {
+        await cpuSandbox.exec(`node -e "${cpuScript}" & wait $!`, {
           cpuTimeLimit: 300,
           timeout: 5000,
         }).then(e => e.wait());
@@ -517,7 +528,7 @@ test('Native Backend Sandbox Execution', async (t) => {
     );
 
     // 2. No leaked workload processes remain
-    const leaked = await cpuSandbox.exec('pgrep -f "while(true)" || echo "none"');
+    const leaked = await cpuSandbox.exec('pgrep -x sbx-cpu-wkld || echo "none"');
     await leaked.wait();
     assert.match(leaked.stdout(), /none/);
 
@@ -535,7 +546,10 @@ test('Native Backend Sandbox Execution', async (t) => {
     const { SandboxResourceError } = await import('../index.js');
     const memSandbox = await Sandbox.create({ backend: 'native' });
 
+    // Distinct title from the compound-OOM test so parallel/serial runs cannot
+    // cross-talk; pgrep -x avoids Linux ancestor self-match (see above).
     const allocScript = `
+      process.title = 'sbx-oom-tree';
       setTimeout(() => {
         const chunks = [];
         for (let i = 0; i < 200; i++) {
@@ -559,7 +573,7 @@ test('Native Backend Sandbox Execution', async (t) => {
     );
 
     // 2. Verify no escaped descendants remain (background jobs, nested children)
-    const leaked = await memSandbox.exec('pgrep -f "Buffer.alloc" || echo "none"');
+    const leaked = await memSandbox.exec('pgrep -x sbx-oom-tree || echo "none"');
     await leaked.wait();
     assert.match(leaked.stdout(), /none/, 'no leaked workload processes after OOM cleanup');
 
