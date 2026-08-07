@@ -20,6 +20,8 @@ export class NativeBackend implements BackendEngine {
   private options!: SandboxOptions;
   /** Active child processes — killed on destroy() */
   private activeProcesses = new Set<ChildProcess>();
+  /** Whether Linux unshare --user network namespace creation succeeded at init */
+  private networkIsolationAvailable = true;
 
   async init(options: SandboxOptions): Promise<void> {
     this.options = options;
@@ -30,6 +32,23 @@ export class NativeBackend implements BackendEngine {
     if (options.workDir) {
       const targetDir = path.resolve(this.sandboxDir, options.workDir);
       await fs.mkdir(targetDir, { recursive: true });
+    }
+
+    // Probe: on Linux, verify unprivileged user-namespace network isolation
+    // works. If unshare --user --map-root-user fails (e.g. user namespaces
+    // restricted, or unshare not supporting the flags), we cannot enforce
+    // network isolation without root. Disable the capability and fall back
+    // to proxy env vars so commands still execute.
+    if (process.platform === 'linux') {
+      try {
+        execSync('unshare -n --user --map-root-user -- /bin/echo ok', {
+          timeout: 5000,
+          stdio: 'ignore',
+        });
+      } catch {
+        this.networkIsolationAvailable = false;
+        this.capabilities.networkIsolation = false;
+      }
     }
   }
 
@@ -339,8 +358,13 @@ export class NativeBackend implements BackendEngine {
 
       if (this.options.network === 'disabled') {
         if (process.platform === 'linux') {
-          spawnShell = '/bin/sh';
-          spawnArgs = ['-c', `unshare -n --user --map-root-user -- /bin/sh -c ${JSON.stringify(command)}`];
+          if (this.networkIsolationAvailable) {
+            spawnShell = '/bin/sh';
+            spawnArgs = ['-c', `unshare -n --user --map-root-user -- /bin/sh -c ${JSON.stringify(command)}`];
+          } else {
+            spawnShell = shell;
+            spawnArgs = [shellFlag, command];
+          }
         } else if (process.platform === 'darwin') {
           const sbProfile = '(version 1) (allow default) (deny network*)';
           spawnShell = '/usr/bin/sandbox-exec';
