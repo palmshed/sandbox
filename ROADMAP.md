@@ -69,11 +69,12 @@ Before marking security and resource enforcement capabilities complete, the proj
 - [x] Timeout cleanup regression test suite across platforms
 
 ### 2. Resource Enforcement (#7)
-- [ ] Native CPU time and quota limit enforcement
+- [x] Native CPU time limit enforcement (process-group sampling, `ERR_CPU_EXCEEDED`) — commit `240f2a5`
+- [ ] Native CPU core quota (`cpuQuota`) enforcement (experimental; cgroups v2 / Job Objects)
 - [x] Native memory limit enforcement (process-group RSS polling, `ERR_OOM_EXCEEDED`) — commits `bf5cc32` + `91debc8`
 - [x] Virtual filesystem disk quota enforcement (`ERR_DISK_QUOTA_EXCEEDED`) — commit `85f477a`
-- [ ] Structured failure states and error types (`ERR_OOM_EXCEEDED`, `ERR_DISK_QUOTA_EXCEEDED` done; `ERR_CPU_EXCEEDED` pending)
-- [ ] Backend capability contract unit and integration tests (flag *types* asserted in compliance/TCK; `memoryLimits: true` verified via enforcement tests)
+- [x] Structured failure states and error types (`ERR_OOM_EXCEEDED`, `ERR_DISK_QUOTA_EXCEEDED`, `ERR_CPU_EXCEEDED`)
+- [ ] Backend capability contract unit and integration tests (flag *types* asserted in compliance/TCK; `memoryLimits: true` and `cpuLimits: true` verified via enforcement tests)
 
 ### 3. Network Isolation
 - [ ] Security threat model document for native and containerized networking
@@ -112,7 +113,7 @@ Before marking security and resource enforcement capabilities complete, the proj
 
 > **Goal**: Make untrusted execution verifiably safe against adversarial workloads.
 
-- [ ] **CPU Hardening**: Infinite loops, runaway processes, strict timeout enforcement
+- [ ] **CPU Hardening**: Infinite loops, runaway processes, strict timeout enforcement (CPU time budget enforced; hard core quota pending)
 - [ ] **Memory Hardening**: Large allocations, OOM handling, cleanup after process kill
 - [ ] **Filesystem Hardening**: Strict disk limits, permission boundaries, temporary storage cleanup
 - [ ] **Process Hardening**: Recursive child process cleanup, signal handling, forced termination

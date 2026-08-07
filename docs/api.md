@@ -1,6 +1,6 @@
 # `@palmshed/sandbox` API Reference
 
-> Runtime specification: `0.1.0` | SDK: `0.1.0-alpha.3`
+> Runtime specification: `0.1.1` | SDK: `0.1.0-alpha.3`
 
 ---
 
@@ -30,7 +30,8 @@ import { Sandbox } from '@palmshed/sandbox';
 const sandbox = await Sandbox.create({
   backend:  'native',      // 'native' | 'docker'. Default: 'native'
   timeout:  10000,         // ms — default execution timeout
-  cpu:      1,             // CPU units (backend-dependent)
+  cpu:      1,             // CPU units (backend-dependent; quota not enforced by native)
+  cpuTimeLimit: 2000,      // ms — CPU time budget enforced across the process group
   memory:   '256MB',       // memory bound (backend-dependent)
   network:  'disabled',    // 'disabled' | 'allow' | 'proxy'
 });
@@ -44,13 +45,24 @@ Reports which features the active backend supports. Check before calling optiona
 const caps = sandbox.capabilities;
 // {
 //   filesystem: true,
-//   networkIsolation: true,
-//   cpuLimits: false,
-//   memoryLimits: false,
+//   networkIsolation: false,
+//   cpuLimits: true,
+//   memoryLimits: true,
 //   streaming: true,
 //   remoteExecution: false
 // }
 ```
+
+`cpuLimits: true` reflects CPU **time** budget enforcement (`cpuTimeLimit`). Platform coverage is not uniform:
+
+| Platform | CPU | Memory |
+|----------|-----|--------|
+| Linux    | Supported (process-group sampling) | Supported (process-group sampling) |
+| macOS    | Supported (process-group sampling) | Supported (process-group sampling) |
+| Windows  | Best-effort (WMIC process-tree polling) | Best-effort (WMIC process-tree polling) |
+| Other    | Unsupported (falls back to timeout) | Unsupported (falls back to timeout) |
+
+On Windows a child that detaches from the process tree can escape accounting; Linux/macOS cover pipelines, background jobs, and chained `sh -c` children. The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
 
 ### `sandbox.backendName`
 
@@ -70,6 +82,8 @@ Options:
 ```ts
 {
   timeout?: number;   // override sandbox-level timeout for this execution
+  cpuTimeLimit?: number; // ms — CPU time budget for this execution (overrides sandbox-level)
+  memory?: string | number; // memory bound override (e.g. '256MB')
   stdout?:  Writable; // pipe stdout directly to a stream
   stderr?:  Writable; // pipe stderr directly to a stream
   onStdout?: (chunk: string) => void;  // callback per chunk
@@ -194,12 +208,13 @@ const meta = execution.metadata();
 // {
 //   id: 'exec_abc123',
 //   backend: 'native',
-//   specVersion: '0.1.0',
+//   specVersion: '0.1.1',
 //   startedAt: '2026-08-08T00:00:00.000Z',
 //   finishedAt: '2026-08-08T00:00:01.200Z',
 //   durationMs: 1200,
 //   exitCode: 0,
-//   timedOut: false
+//   timedOut: false,
+//   cpuTimeMs: 84.6
 // }
 ```
 
@@ -286,12 +301,33 @@ console.log(execution.status());  // 'timedout'
 console.log(execution.timedOut);  // true
 ```
 
+### Enforce a CPU time budget
+
+Limits cumulative user+system CPU time across the whole process group (shell children, pipelines, background jobs), independent of wall-clock `timeout`.
+
+```ts
+import { SandboxResourceError } from '@palmshed/sandbox';
+
+const execution = await sandbox.exec('node -e "while(true){}"', {
+  cpuTimeLimit: 300, // ms of CPU time
+  timeout: 5000,    // wall-clock guard
+});
+await execution.wait();
+
+console.log(execution.status());      // 'failed'
+// wait() rejects with SandboxResourceError:
+//   code: 'ERR_CPU_EXCEEDED', resource: 'cpu', recoverable: true
+```
+
+After a CPU-limit kill the sandbox remains usable; a workload may run again immediately. `cpuTimeMs` in `metadata()`/`result()` reports best-effort CPU time.
+
 ---
 
 ## Known Limitations (`v0.1.0-alpha.3`)
 
 * `execution.cancel()` transitions state only — does not yet send `SIGTERM`/`SIGKILL`.
-* CPU and memory limits are defined in the spec and accepted by the API but not enforced by the Native backend.
+* CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is experimental and not enforced.
+* CPU and memory enforcement on Windows is best-effort (WMIC polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
 * Filesystem isolation (chroot, mount restrictions) is not yet active.
 * Docker backend is present but not at full feature parity with Native.
 

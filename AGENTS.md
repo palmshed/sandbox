@@ -64,12 +64,14 @@ Every execution backend reports supported features dynamically via `capabilities
 {
   "filesystem": true,
   "networkIsolation": true,
-  "cpuLimits": false,
+  "cpuLimits": true,
   "memoryLimits": true,
   "streaming": true,
   "remoteExecution": false
 }
 ```
+
+`cpuLimits` reflects CPU **time** budget enforcement (Linux/macOS: supported via process-group sampling; Windows: best-effort WMIC polling). The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
 
 This allows SDKs to adapt gracefully without embedding backend-specific conditional logic.
 
