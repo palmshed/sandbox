@@ -18,6 +18,8 @@ export interface SandboxOptions {
   cpu?: number;
   /** Memory limit e.g. "512MB" */
   memory?: string | number;
+  /** Disk storage quota limit e.g. "100MB", "1GB" or bytes */
+  diskQuota?: string | number;
   /** Global command execution timeout in milliseconds */
   timeout?: number;
   /** Network access policy */
@@ -84,13 +86,53 @@ export interface ExecResult {
   metadata: ExecutionMetadata;
 }
 
+export type ResourceErrorCode =
+  | 'ERR_CPU_EXCEEDED'
+  | 'ERR_OOM_EXCEEDED'
+  | 'ERR_DISK_QUOTA_EXCEEDED';
+
+export interface SandboxResourceErrorDetails {
+  resource: 'cpu' | 'memory' | 'disk';
+  limit: string | number;
+  observed?: string | number;
+  recoverable: boolean;
+}
+
 export class SandboxError extends Error {
   constructor(
     message: string,
-    public readonly code: 'TIMEOUT' | 'OOM' | 'INVALID_BACKEND' | 'EXEC_FAILED' | 'FS_ERROR' | 'UNKNOWN',
+    public readonly code:
+      | 'TIMEOUT'
+      | 'OOM'
+      | 'INVALID_BACKEND'
+      | 'EXEC_FAILED'
+      | 'FS_ERROR'
+      | ResourceErrorCode
+      | 'UNKNOWN',
     public readonly details?: unknown
   ) {
     super(message);
     this.name = 'SandboxError';
   }
 }
+
+export class SandboxResourceError extends SandboxError {
+  public readonly resource: 'cpu' | 'memory' | 'disk';
+  public readonly limit: string | number;
+  public readonly observed?: string | number;
+  public readonly recoverable: boolean;
+
+  constructor(
+    message: string,
+    public override readonly code: ResourceErrorCode,
+    details: SandboxResourceErrorDetails
+  ) {
+    super(message, code, details);
+    this.name = 'SandboxResourceError';
+    this.resource = details.resource;
+    this.limit = details.limit;
+    this.observed = details.observed;
+    this.recoverable = details.recoverable;
+  }
+}
+

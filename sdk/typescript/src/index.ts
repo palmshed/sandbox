@@ -8,5 +8,8 @@ export {
   ResourceLimits,
   NetworkPolicy,
   SandboxError,
+  SandboxResourceError,
+  ResourceErrorCode,
+  SandboxResourceErrorDetails,
 } from './core/types.js';
 export { BackendEngine, registerBackend, createBackend } from './backends/index.js';

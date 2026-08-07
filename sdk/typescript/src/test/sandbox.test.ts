@@ -136,5 +136,36 @@ test('Native Backend Sandbox Execution', async (t) => {
     await freshSandbox.destroy();
     assert.ok(true, 'Sandbox destroyed active streams without throwing');
   });
+
+  await t.test('resource enforcement: disk quota exceeded error & recovery', async () => {
+    const quotaSandbox = await Sandbox.create({ backend: 'native', diskQuota: '1KB' });
+    const { SandboxResourceError } = await import('../index.js');
+
+    // 1. Normal write within quota
+    await quotaSandbox.writeFile('small.txt', 'Hello world');
+
+    // 2. Negative boundary test: exceed 1KB quota
+    const largeContent = 'X'.repeat(2048);
+    await assert.rejects(
+      async () => {
+        await quotaSandbox.writeFile('large.txt', largeContent);
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_DISK_QUOTA_EXCEEDED');
+        assert.equal(resErr.resource, 'disk');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    // 3. Recovery test: sandbox remains healthy and reusable for subsequent operations
+    await quotaSandbox.writeFile('recovery.txt', 'OK');
+    const readBuf = await quotaSandbox.readFile('recovery.txt');
+    assert.equal(readBuf.toString(), 'OK');
+
+    await quotaSandbox.destroy();
+  });
 });
 

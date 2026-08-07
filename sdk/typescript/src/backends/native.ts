@@ -182,6 +182,62 @@ export class NativeBackend implements BackendEngine {
     return resolved;
   }
 
+  private async getDirectorySize(dirPath: string): Promise<number> {
+    let totalSize = 0;
+    try {
+      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+          totalSize += await this.getDirectorySize(fullPath);
+        } else if (entry.isFile()) {
+          const stat = await fs.stat(fullPath);
+          totalSize += stat.size;
+        }
+      }
+    } catch {
+      // Directory may not exist yet
+    }
+    return totalSize;
+  }
+
+  private async assertDiskQuotaAvailable(additionalBytes: number): Promise<void> {
+    if (!this.options?.diskQuota) return;
+    const quotaBytes =
+      typeof this.options.diskQuota === 'number'
+        ? this.options.diskQuota
+        : this.parseSizeStringToBytes(this.options.diskQuota);
+
+    const currentSize = await this.getDirectorySize(this.sandboxDir);
+    if (currentSize + additionalBytes > quotaBytes) {
+      const { SandboxResourceError } = await import('../core/types.js');
+      throw new SandboxResourceError(
+        `Disk quota exceeded: current usage ${currentSize + additionalBytes} bytes exceeds limit of ${quotaBytes} bytes`,
+        'ERR_DISK_QUOTA_EXCEEDED',
+        {
+          resource: 'disk',
+          limit: this.options.diskQuota,
+          observed: currentSize + additionalBytes,
+          recoverable: true,
+        }
+      );
+    }
+  }
+
+  private parseSizeStringToBytes(sizeStr: string): number {
+    const match = sizeStr.trim().match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?$/);
+    if (!match) return 100 * 1024 * 1024; // Default fallback 100MB
+    const num = parseFloat(match[1]);
+    const unit = (match[2] || 'MB').toUpperCase();
+    const multipliers: Record<string, number> = {
+      B: 1,
+      KB: 1024,
+      MB: 1024 * 1024,
+      GB: 1024 * 1024 * 1024,
+    };
+    return Math.floor(num * (multipliers[unit] || 1024 * 1024));
+  }
+
   async readFile(filePath: string): Promise<Buffer> {
     const target = this.resolveSandboxPath(filePath);
     return await fs.readFile(target);
@@ -189,12 +245,16 @@ export class NativeBackend implements BackendEngine {
 
   async writeFile(filePath: string, content: Buffer | string): Promise<void> {
     const target = this.resolveSandboxPath(filePath);
+    const contentBytes = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content, 'utf-8');
+    await this.assertDiskQuotaAvailable(contentBytes);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.writeFile(target, content);
   }
 
   async uploadFile(localPath: string, sandboxPath: string): Promise<void> {
     const target = this.resolveSandboxPath(sandboxPath);
+    const stat = await fs.stat(localPath);
+    await this.assertDiskQuotaAvailable(stat.size);
     await fs.mkdir(path.dirname(target), { recursive: true });
     await fs.copyFile(localPath, target);
   }
