@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.1] - 2026-08-08
+
+### Added
+- CPU resource contract: `cpuTimeLimit` (supported CPU time budget, ms) and `cpuQuota` (experimental core quota) in `sandbox.schema.json` and `exec.schema.json`.
+- Per-execution `memory` override in `exec.schema.json` `ExecOptions`.
+- Best-effort `cpuTimeMs` CPU usage reporting on `ExecResult`.
+- Clarified `cpuLimits` capability semantics in `capabilities.schema.json`.
+
+---
+
 ## [0.1.0] - 2026-08-07
 
 ### Added

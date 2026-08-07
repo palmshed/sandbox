@@ -3,8 +3,12 @@ import { Readable, Writable } from 'stream';
 export type NetworkPolicy = 'disabled' | 'allow' | 'proxy';
 
 export interface ResourceLimits {
-  /** Number of CPU cores allocated (e.g. 1, 2, 0.5) */
+  /** Number of CPU cores allocated (e.g. 1, 2, 0.5). Quota semantics; experimental for the native backend. */
   cpu?: number;
+  /** CPU core allocation quota (experimental, not yet enforced by native backend) */
+  cpuQuota?: number;
+  /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend. */
+  cpuTimeLimit?: number;
   /** Memory limit, e.g. "512MB", "2GB", or bytes in number */
   memory?: string | number;
   /** Execution timeout in milliseconds */
@@ -14,8 +18,12 @@ export interface ResourceLimits {
 export interface SandboxOptions {
   /** Execution backend type. Defaults to 'native' if docker is unavailable */
   backend?: 'native' | 'docker' | string;
-  /** CPU cores count */
+  /** CPU cores count (quota semantics; experimental for the native backend) */
   cpu?: number;
+  /** CPU core allocation quota (experimental, not yet enforced by native backend) */
+  cpuQuota?: number;
+  /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend. */
+  cpuTimeLimit?: number;
   /** Memory limit e.g. "512MB" */
   memory?: string | number;
   /** Disk storage quota limit e.g. "100MB", "1GB" or bytes */
@@ -35,6 +43,10 @@ export interface SandboxOptions {
 export interface ExecOptions {
   /** Override default execution timeout for this run (ms) */
   timeout?: number;
+  /** CPU time budget for this execution (ms). Overrides sandbox-level cpuTimeLimit. Enforced across the process group. */
+  cpuTimeLimit?: number;
+  /** CPU core allocation quota for this execution (experimental) */
+  cpuQuota?: number;
   /** Memory limit for this execution, e.g. "256MB" or bytes. Overrides sandbox-level memory option. */
   memory?: string | number;
   /** Custom working directory relative to sandbox root */
@@ -69,6 +81,8 @@ export interface ExecutionMetadata {
   durationMs: number;
   exitCode: number;
   timedOut: boolean;
+  /** Total CPU time consumed by the process group in ms (best-effort) */
+  cpuTimeMs?: number;
 }
 
 export interface ExecResult {
@@ -84,6 +98,8 @@ export interface ExecResult {
   durationMs: number;
   /** True if execution was terminated due to timeout */
   timedOut: boolean;
+  /** Total CPU time consumed by the process group in ms (best-effort) */
+  cpuTimeMs?: number;
   /** Structured execution metadata */
   metadata: ExecutionMetadata;
 }

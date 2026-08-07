@@ -22,7 +22,7 @@
     },
     "cpuLimits": {
       "type": "boolean",
-      "description": "True if CPU core hardware resource limits can be enforced"
+      "description": "True if CPU limits can be enforced. Currently reflects CPU time budget enforcement (cpuTimeLimit); hard core quota (cpuQuota) is experimental and reported separately."
     },
     "memoryLimits": {
       "type": "boolean",

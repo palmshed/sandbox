@@ -32,7 +32,7 @@ test('Native Backend Sandbox Execution', async (t) => {
 
     const meta = execution.metadata()!;
     assert.equal(meta.backend, 'native');
-    assert.equal(meta.specVersion, '0.1.0');
+    assert.equal(meta.specVersion, '0.1.1');
     assert.equal(meta.exitCode, 0);
     assert.equal(meta.timedOut, false);
     assert.equal(typeof meta.startedAt, 'string');
@@ -348,6 +348,157 @@ test('Native Backend Sandbox Execution', async (t) => {
     assert.match(recovery.stdout(), /alive after compound oom/);
 
     await memSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: CPU time normal execution completes and reports cpuTimeMs', async () => {
+    const cpuSandbox = await Sandbox.create({ backend: 'native' });
+
+    // Runs longer than one 100ms poll cycle so cpuTimeMs is captured; uses
+    // almost no CPU, well within the budget.
+    const execution = await cpuSandbox.exec('node -e "setTimeout(() => {}, 500)"', {
+      cpuTimeLimit: 5000,
+      timeout: 5000,
+    });
+    await execution.wait();
+
+    assert.equal(execution.status(), 'completed');
+    const meta = execution.metadata()!;
+    assert.equal(typeof meta.cpuTimeMs, 'number');
+    assert.ok(meta.cpuTimeMs! >= 0, 'cpuTimeMs reported in metadata');
+    const result = execution.result()!;
+    assert.equal(typeof result.cpuTimeMs, 'number');
+    assert.ok(result.cpuTimeMs! >= 0, 'cpuTimeMs reported in result');
+
+    await cpuSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: direct busy loop exceeds CPU time -> ERR_CPU_EXCEEDED', async () => {
+    const { SandboxResourceError } = await import('../index.js');
+    const cpuSandbox = await Sandbox.create({ backend: 'native' });
+
+    await assert.rejects(
+      async () => {
+        await cpuSandbox.exec('node -e "let x=0; while(true){x++}"', {
+          cpuTimeLimit: 300,
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_CPU_EXCEEDED');
+        assert.equal(resErr.resource, 'cpu');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    await cpuSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: sh -c background child CPU burn -> ERR_CPU_EXCEEDED', async (t) => {
+    if (process.platform === 'win32') return t.skip('compound sh syntax is POSIX-only');
+    const { SandboxResourceError } = await import('../index.js');
+    const cpuSandbox = await Sandbox.create({ backend: 'native' });
+
+    // The shell parent stays idle (~0 CPU); the backgrounded node child burns
+    // CPU. Only process-group accounting can see the workload's consumption.
+    await assert.rejects(
+      async () => {
+        await cpuSandbox.exec('node -e "let x=0; while(true){x++}" & wait $!', {
+          cpuTimeLimit: 300,
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_CPU_EXCEEDED');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    await cpuSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: pipeline producer CPU burn -> ERR_CPU_EXCEEDED', async (t) => {
+    if (process.platform === 'win32') return t.skip('compound sh syntax is POSIX-only');
+    const { SandboxResourceError } = await import('../index.js');
+    const cpuSandbox = await Sandbox.create({ backend: 'native' });
+
+    await assert.rejects(
+      async () => {
+        await cpuSandbox.exec('node -e "let x=0; while(true){x++}" | cat', {
+          cpuTimeLimit: 300,
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_CPU_EXCEEDED');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    await cpuSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: multiple parallel CPU workers -> ERR_CPU_EXCEEDED', async (t) => {
+    if (process.platform === 'win32') return t.skip('compound sh syntax is POSIX-only');
+    const { SandboxResourceError } = await import('../index.js');
+    const cpuSandbox = await Sandbox.create({ backend: 'native' });
+
+    // Three parallel busy loops consume CPU far faster than a single worker.
+    await assert.rejects(
+      async () => {
+        await cpuSandbox.exec(
+          'for i in 1 2 3; do node -e "let x=0; while(true){x++}" & done; wait',
+          { cpuTimeLimit: 300, timeout: 5000 }
+        ).then(e => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_CPU_EXCEEDED');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    await cpuSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: sandbox reusable after CPU limit kill', async (t) => {
+    if (process.platform === 'win32') return t.skip('compound sh syntax is POSIX-only');
+    const { SandboxResourceError } = await import('../index.js');
+    const cpuSandbox = await Sandbox.create({ backend: 'native' });
+
+    // 1. CPU limit kill of a background child
+    await assert.rejects(
+      async () => {
+        await cpuSandbox.exec('node -e "let x=0; while(true){x++}" & wait $!', {
+          cpuTimeLimit: 300,
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => err instanceof SandboxResourceError && err.code === 'ERR_CPU_EXCEEDED'
+    );
+
+    // 2. No leaked workload processes remain
+    const leaked = await cpuSandbox.exec('pgrep -f "while(true)" || echo "none"');
+    await leaked.wait();
+    assert.match(leaked.stdout(), /none/);
+
+    // 3. Sandbox remains reusable
+    const recovery = await cpuSandbox.exec('echo "alive after cpu kill"');
+    await recovery.wait();
+    assert.equal(recovery.status(), 'completed');
+    assert.match(recovery.stdout(), /alive after cpu kill/);
+
+    await cpuSandbox.destroy();
   });
 });
 

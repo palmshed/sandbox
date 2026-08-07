@@ -11,6 +11,20 @@
           "type": "integer",
           "minimum": 0
         },
+        "memory": {
+          "type": ["string", "number"],
+          "description": "Memory limit for this execution (e.g. '256MB' or bytes). Overrides sandbox-level memory."
+        },
+        "cpuTimeLimit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "CPU time budget in milliseconds for this execution. Overrides sandbox-level cpuTimeLimit. Enforced across the process group."
+        },
+        "cpuQuota": {
+          "type": "number",
+          "minimum": 0.1,
+          "description": "CPU core allocation quota for this execution (experimental)."
+        },
         "workDir": {
           "type": "string"
         },
@@ -41,6 +55,10 @@
         },
         "timedOut": {
           "type": "boolean"
+        },
+        "cpuTimeMs": {
+          "type": "number",
+          "description": "Total CPU time consumed by the execution process group in milliseconds (best-effort reporting)"
         }
       },
       "additionalProperties": false

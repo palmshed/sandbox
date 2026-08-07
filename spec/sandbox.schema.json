@@ -13,7 +13,17 @@
     "cpu": {
       "type": "number",
       "minimum": 0.1,
-      "description": "Number of CPU cores allocated"
+      "description": "Number of CPU cores allocated (quota semantics). Enforced by containerized backends; experimental for the native backend."
+    },
+    "cpuQuota": {
+      "type": "number",
+      "minimum": 0.1,
+      "description": "CPU core allocation quota (e.g. 0.5). Experimental: native backend does not yet enforce hard quota; requires cgroups v2 / Job Objects."
+    },
+    "cpuTimeLimit": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "CPU time budget in milliseconds (e.g. 2000). Supported boundary: enforced across the full process group by the native backend. Distinct from timeout (wall-clock)."
     },
     "memory": {
       "type": ["string", "number"],

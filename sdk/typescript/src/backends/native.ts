@@ -11,7 +11,7 @@ export class NativeBackend implements BackendEngine {
   public readonly capabilities = {
     filesystem: true,
     networkIsolation: false,
-    cpuLimits: false,
+    cpuLimits: true,
     memoryLimits: true,
     streaming: true,
     remoteExecution: false,
@@ -59,14 +59,21 @@ export class NativeBackend implements BackendEngine {
       typeof rawMemoryLimit === 'number' ? String(rawMemoryLimit) : rawMemoryLimit
     ) : null;
 
+    // Parse CPU time limit (ms): per-execution option takes precedence over sandbox-level option
+    const rawCpuTimeLimit = options.cpuTimeLimit ?? this.options.cpuTimeLimit;
+    const cpuTimeLimitMs = rawCpuTimeLimit !== undefined && rawCpuTimeLimit > 0 ? rawCpuTimeLimit : null;
+
     return new Promise((resolve, reject) => {
       let stdoutAcc = '';
       let stderrAcc = '';
       let timedOut = false;
       let oomKilled = false;
+      let cpuExceeded = false;
       let timer: NodeJS.Timeout | null = null;
       let memPoller: NodeJS.Timeout | null = null;
+      let cpuPoller: NodeJS.Timeout | null = null;
       let settled = false;
+      let finalCpuTimeMs: number | undefined;
 
       /**
        * Sample the total RSS of a process group/tree in bytes, cross-platform.
@@ -182,6 +189,143 @@ export class NativeBackend implements BackendEngine {
       const shell = isWin ? 'cmd.exe' : '/bin/sh';
       const shellFlag = isWin ? '/s /c' : '-c';
 
+      /**
+       * Sample the total CPU time (user + system) of a process group/tree in
+       * milliseconds, cross-platform. Same process-group accounting as the RSS
+       * sampler: enforcement must measure the workload (shell children,
+       * pipelines, background jobs), not just the top-level PID.
+       * Returns -1 if the group cannot be read (process already exited).
+       */
+      const sampleGroupCpuTimeMs = (rootPid: number): number => {
+        const platform = process.platform;
+        if (platform === 'linux') {
+          // Sum utime+stime across every process whose pgrp matches rootPid.
+          // /proc/<pid>/stat fields (after last ')'): state ppid pgrp session
+          // tty tpgid flags minflt cminflt majflt cmajflt utime stime ...
+          // Ticks are in USER_HZ (typically 100).
+          let total = 0;
+          let found = false;
+          let entries: string[] = [];
+          try {
+            entries = fssync.readdirSync('/proc').filter((d) => /^\d+$/.test(d));
+          } catch {
+            return -1;
+          }
+          for (const d of entries) {
+            let statRaw: string;
+            try {
+              statRaw = fssync.readFileSync(`/proc/${d}/stat`, 'utf-8');
+            } catch {
+              continue;
+            }
+            const closeParen = statRaw.lastIndexOf(')');
+            if (closeParen === -1) continue;
+            const rest = statRaw.slice(closeParen + 2).split(' ');
+            if (parseInt(rest[2], 10) !== rootPid) continue;
+            found = true;
+            const utime = parseInt(rest[11], 10) || 0;
+            const stime = parseInt(rest[12], 10) || 0;
+            total += (utime + stime) * 10; // 100 ticks/sec => 10ms per tick
+          }
+          return found ? total : -1;
+        } else if (platform === 'darwin') {
+          // macOS: ps reports utime/stime as [MM:]SS.CC
+          let out: string;
+          try {
+            out = execSync(`ps -o utime=,stime= -g ${rootPid}`, { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+          } catch {
+            return -1;
+          }
+          const lines = out.trim().split('\n').filter(Boolean);
+          if (lines.length === 0) return -1;
+          let total = 0;
+          for (const line of lines) {
+            const [utime, stime] = line.trim().split(/\s+/);
+            total += parseMacTimeToMs(utime) + parseMacTimeToMs(stime);
+          }
+          return total;
+        } else if (platform === 'win32') {
+          // Windows: WMIC process-tree walk of KernelModeTime + UserModeTime
+          // (100-nanosecond units => /10000 = ms).
+          let out: string;
+          try {
+            out = execSync(
+              'wmic process get ProcessId,ParentProcessId,KernelModeTime,UserModeTime /value',
+              { stdio: ['ignore', 'pipe', 'ignore'] }
+            ).toString();
+          } catch {
+            return -1;
+          }
+          const procs = new Map<number, { ppid: number; cpu: number }>();
+          let curPid = 0;
+          let curPpid = 0;
+          let curCpu = 0;
+          for (const line of out.split('\n')) {
+            const trimmed = line.trim();
+            if (!trimmed) {
+              if (curPid) procs.set(curPid, { ppid: curPpid, cpu: curCpu });
+              curPid = 0;
+              curPpid = 0;
+              curCpu = 0;
+              continue;
+            }
+            const eq = trimmed.indexOf('=');
+            if (eq === -1) continue;
+            const key = trimmed.slice(0, eq);
+            const val = parseInt(trimmed.slice(eq + 1), 10) || 0;
+            if (key === 'ProcessId') curPid = val;
+            else if (key === 'ParentProcessId') curPpid = val;
+            else if (key === 'KernelModeTime' || key === 'UserModeTime') curCpu += val;
+          }
+          if (curPid) procs.set(curPid, { ppid: curPpid, cpu: curCpu });
+          let total = 0;
+          const visited = new Set<number>();
+          const queue = [rootPid];
+          while (queue.length) {
+            const current = queue.shift()!;
+            if (visited.has(current)) continue;
+            visited.add(current);
+            const p = procs.get(current);
+            if (!p) continue;
+            total += p.cpu;
+            for (const [childPid, child] of procs) {
+              if (child.ppid === current && !visited.has(childPid)) queue.push(childPid);
+            }
+          }
+          return total / 10000;
+        }
+        return -1;
+      };
+
+      /**
+       * Parse a macOS ps time string ([MM:]SS.CC, optionally [dd-]hh:mm:ss[.CC])
+       * into milliseconds. Missing fields are treated as zero.
+       */
+      const parseMacTimeToMs = (raw: string): number => {
+        if (!raw) return 0;
+        let s = raw.trim();
+        if (!s) return 0;
+        let days = 0;
+        const dashIdx = s.indexOf('-');
+        if (dashIdx !== -1) {
+          days = parseInt(s.slice(0, dashIdx), 10) || 0;
+          s = s.slice(dashIdx + 1);
+        }
+        const parts = s.split(':');
+        let totalMs = days * 24 * 3600 * 1000;
+        if (parts.length === 3) {
+          totalMs += (parseInt(parts[0], 10) || 0) * 3600 * 1000;
+          totalMs += (parseInt(parts[1], 10) || 0) * 60 * 1000;
+          totalMs += Math.round((parseFloat(parts[2]) || 0) * 1000);
+        } else if (parts.length === 2) {
+          totalMs += (parseInt(parts[0], 10) || 0) * 60 * 1000;
+          totalMs += Math.round((parseFloat(parts[1]) || 0) * 1000);
+        } else {
+          totalMs += Math.round((parseFloat(s) || 0) * 1000);
+        }
+        return totalMs;
+      };
+
       const child = spawn(shell, [shellFlag, command], {
         cwd,
         env,
@@ -260,6 +404,29 @@ export class NativeBackend implements BackendEngine {
         }, 100);
       }
 
+      // CPU-time budget enforcement (100ms interval). Measures cumulative
+      // user+system CPU time across the whole process group, so a workload
+      // that forks workers, pipelines, or background children cannot hide its
+      // CPU consumption in a descendant process. Independent of wall-clock
+      // timeout: a workload can exceed CPU time while staying within timeout.
+      if (cpuTimeLimitMs !== null && child.pid !== undefined) {
+        const monitoredRootPid = child.pid;
+        cpuPoller = setInterval(() => {
+          if (settled) {
+            clearInterval(cpuPoller!);
+            return;
+          }
+          const cpuMs = sampleGroupCpuTimeMs(monitoredRootPid);
+          if (cpuMs === -1) return; // process group already gone
+          finalCpuTimeMs = cpuMs;
+          if (cpuMs > cpuTimeLimitMs) {
+            cpuExceeded = true;
+            clearInterval(cpuPoller!);
+            killProcess('SIGKILL');
+          }
+        }, 100);
+      }
+
       child.stdout?.on('data', (chunk: Buffer) => {
         const str = chunk.toString();
         stdoutAcc += str;
@@ -286,10 +453,17 @@ export class NativeBackend implements BackendEngine {
         this.activeProcesses.delete(child);
         if (timer) clearTimeout(timer);
         if (memPoller) clearInterval(memPoller);
+        if (cpuPoller) clearInterval(cpuPoller);
+        // Best-effort final CPU-time sample for reporting even when no CPU
+        // limit was configured (the process group has already been killed).
+        if (finalCpuTimeMs === undefined && child.pid !== undefined) {
+          const last = sampleGroupCpuTimeMs(child.pid);
+          if (last !== -1) finalCpuTimeMs = last;
+        }
         const finishedAtMs = Date.now();
         const durationMs = finishedAtMs - startTime;
         const execId = `exec_${Math.random().toString(36).substring(2, 10)}`;
-        const exitCode = timedOut || oomKilled ? -1 : (code ?? 0);
+        const exitCode = timedOut || oomKilled || cpuExceeded ? -1 : (code ?? 0);
 
         if (oomKilled && memLimitBytes !== null) {
           // Capture final RSS best-effort (process is gone, use limit as observed)
@@ -306,15 +480,30 @@ export class NativeBackend implements BackendEngine {
           return;
         }
 
+        if (cpuExceeded && cpuTimeLimitMs !== null) {
+          reject(new SandboxResourceError(
+            `CPU time limit exceeded: process group consumed more than ${rawCpuTimeLimit}ms of CPU time`,
+            'ERR_CPU_EXCEEDED',
+            {
+              resource: 'cpu',
+              limit: rawCpuTimeLimit!,
+              observed: `>${rawCpuTimeLimit}`,
+              recoverable: true,
+            }
+          ));
+          return;
+        }
+
         const metadata = {
           id: execId,
           backend: this.name,
-          specVersion: '0.1.0',
+          specVersion: '0.1.1',
           startedAt: new Date(startTime).toISOString(),
           finishedAt: new Date(finishedAtMs).toISOString(),
           durationMs,
           exitCode,
           timedOut,
+          cpuTimeMs: finalCpuTimeMs,
         };
 
         resolve({
@@ -324,6 +513,7 @@ export class NativeBackend implements BackendEngine {
           stderr: stderrAcc,
           durationMs,
           timedOut,
+          cpuTimeMs: finalCpuTimeMs,
           metadata,
         });
       });
