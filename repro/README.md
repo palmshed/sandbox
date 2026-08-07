@@ -54,7 +54,7 @@ issue → minimal reproduction → failing test → fix → regression test
 | `memory/` | Green: memory enforcement is implemented and validated |
 | `process/`| Green: lifecycle guarantees are implemented |
 | `disk/`   | Green: disk quota is implemented |
-| `network/`| **Green**: `network: 'disabled'` is enforced by the Native backend via `unshare -n --user --map-root-user` (Linux) and `sandbox-exec` (macOS). See `rfcs/0004-network-isolation.md`. |
+| `network/`| **Green**: `network: 'disabled'` is enforced by the Native backend via `sandbox-exec` (macOS, verified 5/5) and `unshare -n --user --map-root-user` (Linux when user namespaces are available; falls back to proxy env vars otherwise). See `rfcs/0004-network-isolation.md`. |
 
 ## Notes
 

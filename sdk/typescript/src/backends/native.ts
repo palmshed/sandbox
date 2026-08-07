@@ -10,7 +10,7 @@ export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
   public readonly capabilities = {
     filesystem: true,
-    networkIsolation: true,  // Linux (unshare --user --map-root-user -n) and macOS (sandbox-exec) verified; Windows unsupported
+    networkIsolation: true,  // Probed at init: true if unshare --user works (macOS: sandbox-exec always available); false on Linux CI where user namespaces are restricted
     cpuLimits: true,
     memoryLimits: true,
     streaming: true,
@@ -18,7 +18,7 @@ export class NativeBackend implements BackendEngine {
   };
   private sandboxDir: string = '';
   private options!: SandboxOptions;
-  /** Active child processes — killed on destroy() */
+  /** Active child processes -- killed on destroy() */
   private activeProcesses = new Set<ChildProcess>();
   /** Whether Linux unshare --user network namespace creation succeeded at init */
   private networkIsolationAvailable = true;

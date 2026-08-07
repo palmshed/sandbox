@@ -83,10 +83,10 @@ Every execution backend reports supported features dynamically via `capabilities
 
 `cpuLimits` reflects CPU **time** budget enforcement (Linux/macOS: supported via process-group sampling; Windows: best-effort WMIC polling). The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
 
-`networkIsolation` is now `true` with platform-specific implementation:
-- **Linux**: Uses `unshare -n --user --map-root-user` for isolated network namespace (unprivileged user namespace, no root required)
-- **macOS**: Uses `sandbox-exec` with Seatbelt profile (note: deprecated by Apple; documented limitation in RFC 0004)
-- **Windows**: Unsupported (network tests skip on Windows)
+`networkIsolation` is probed at `init()` time:
+- **Linux**: `true` if `unshare --user --map-root-user` succeeds (unprivileged user namespaces available); `false` on CI runners where user namespaces are restricted (falls back to proxy env vars)
+- **macOS**: `true` (uses `sandbox-exec` with Seatbelt profile, note: deprecated by Apple; documented limitation in RFC 0004)
+- **Windows**: `false` (network tests skip on Windows)
 
 This allows SDKs to adapt gracefully without embedding backend-specific conditional logic.
 
