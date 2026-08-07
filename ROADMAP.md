@@ -62,26 +62,30 @@ Before marking security and resource enforcement capabilities complete, the proj
 > **Rule**: Capabilities change from `false` → `true` only when backed by integration tests.
 
 ### 1. Process Lifecycle & Signal Handling (#2)
-- [ ] Reliable process termination and signal propagation (`SIGTERM`, `SIGKILL`)
-- [ ] Automatic recursive cleanup of child processes (prevent orphaned process leaks)
-- [ ] Safe `destroy()` handling during active background/streamed execution
-- [ ] Zero orphan process guarantee across native and containerized execution
+- [ ] POSIX process tree discovery (group PIDs & sub-shell descendants)
+- [ ] Windows process tree termination (`taskkill /F /T` equivalent)
+- [ ] Orphan process detection integration test suite
+- [ ] `destroy()` during active streaming/background process execution
+- [ ] Timeout cleanup regression test suite across platforms
 
 ### 2. Resource Enforcement (#7)
-- [ ] CPU time and quota limits (hard enforcement & throttling)
-- [ ] Memory limit enforcement (cgroups / kernel limits / process monitoring)
-- [ ] Disk usage limits & quota limits on virtual filesystems
-- [ ] Explicit, structured failure states/errors when resource limits are exceeded
+- [ ] Native CPU time and quota limit enforcement
+- [ ] Native memory limit enforcement (cgroups v2 / process monitoring)
+- [ ] Virtual filesystem disk quota enforcement
+- [ ] Structured failure states and error types (e.g. `ERR_OOM_EXCEEDED`, `ERR_CPU_EXCEEDED`)
+- [ ] Backend capability contract unit and integration tests
 
 ### 3. Network Isolation
-- [ ] Define the security model and boundary specification first
-- [ ] Implement network restrictions in the native backend
-- [ ] Document precise isolation guarantees and non-isolated edge cases
+- [ ] Security threat model document for native and containerized networking
+- [ ] Native backend isolation design decision (unshare/namespaces vs fallback proxies)
+- [ ] Docker container network isolation test suite (`--network none` leak checks)
+- [ ] Automated network leak test suite (TCP, UDP, raw socket, DNS)
 
 ### Acceptance Criteria for Capability Promotion (`false` → `true`)
 - Implementation exists in the native backend engine
 - Public API behavior and boundary contracts are fully documented
 - Clear failure modes and error types are defined for limit breaches
+- **Negative Boundary Test Requirement**: Every capability MUST have a negative test proving explicit, controlled failure and sandbox health when the boundary is breached (e.g., exceeding memory triggers `ERR_OOM_EXCEEDED` while leaving the sandbox engine healthy and reusable).
 - Integration tests cover both standard and adversarial cases (fork bombs, memory leaks, unkilled child processes)
 - CI suite verifies behavior consistently across target platforms
 - Documentation & Gist updated with verified guarantee levels
