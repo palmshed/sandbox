@@ -10,7 +10,7 @@ export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
   public readonly capabilities = {
     filesystem: true,
-    networkIsolation: false,
+    networkIsolation: true,  // Linux (unshare -n) and macOS (sandbox-exec) verified; Windows unsupported
     cpuLimits: true,
     memoryLimits: true,
     streaming: true,
