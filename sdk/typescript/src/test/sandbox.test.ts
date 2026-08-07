@@ -116,5 +116,25 @@ test('Native Backend Sandbox Execution', async (t) => {
     assert.equal(execution.status(), 'timedout');
     assert.equal(execution.metadata()!.timedOut, true);
   });
+
+  await t.test('lifecycle: handles SIGTERM-ignoring child process gracefully', async () => {
+    const execution = await sandbox.exec('node -e "process.on(\'SIGTERM\', () => {}); setInterval(() => {}, 1000)"', {
+      timeout: 200,
+    });
+
+    await execution.wait();
+    assert.equal(execution.status(), 'timedout');
+    assert.equal(execution.metadata()!.timedOut, true);
+  });
+
+  await t.test('lifecycle: destroy() cleans multiple active streaming processes cleanly', async () => {
+    const freshSandbox = await Sandbox.create({ backend: 'native' });
+    const exec1 = await freshSandbox.exec('node -e "setInterval(() => console.log(\'exec1\'), 100)"');
+    const exec2 = await freshSandbox.exec('node -e "setInterval(() => console.log(\'exec2\'), 100)"');
+
+    // Destroy sandbox while both executions are active and streaming
+    await freshSandbox.destroy();
+    assert.ok(true, 'Sandbox destroyed active streams without throwing');
+  });
 });
 

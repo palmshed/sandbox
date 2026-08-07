@@ -106,8 +106,18 @@ class NativeBackend {
                     return;
                 try {
                     if (!isWin && child.pid !== undefined) {
-                        // Negative PID targets the entire process group
+                        // Negative PID targets the entire POSIX process group
                         process.kill(-child.pid, signal);
+                    }
+                    else if (isWin && child.pid !== undefined) {
+                        // Windows process tree cleanup using taskkill
+                        const { execSync } = require('child_process');
+                        try {
+                            execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' });
+                        }
+                        catch {
+                            child.kill(signal);
+                        }
                     }
                     else {
                         child.kill(signal);
@@ -223,6 +233,15 @@ class NativeBackend {
                 const isWin = process.platform === 'win32';
                 if (!isWin && child.pid !== undefined) {
                     process.kill(-child.pid, 'SIGKILL');
+                }
+                else if (isWin && child.pid !== undefined) {
+                    const { execSync } = require('child_process');
+                    try {
+                        execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' });
+                    }
+                    catch {
+                        child.kill('SIGKILL');
+                    }
                 }
                 else {
                     child.kill('SIGKILL');

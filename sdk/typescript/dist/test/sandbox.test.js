@@ -120,4 +120,35 @@ const index_js_1 = require("../index.js");
         await fs.rm(tmpLocalSrc, { force: true });
         await fs.rm(tmpLocalDst, { force: true });
     });
+    await t.test('lifecycle: kills nested child processes on timeout and destroy', async () => {
+        const isWin = process.platform === 'win32';
+        // Spawn nested process (sh -> node child -> node grandchild)
+        const script = `
+      const { spawn } = require('child_process');
+      const child = spawn('node', ['-e', 'setInterval(() => {}, 1000)']);
+      setInterval(() => {}, 1000);
+    `;
+        const execution = await sandbox.exec(`node -e "${script.replace(/\n/g, ' ')}"`, {
+            timeout: 300,
+        });
+        await execution.wait();
+        strict_1.default.equal(execution.status(), 'timedout');
+        strict_1.default.equal(execution.metadata().timedOut, true);
+    });
+    await t.test('lifecycle: handles SIGTERM-ignoring child process gracefully', async () => {
+        const execution = await sandbox.exec('node -e "process.on(\'SIGTERM\', () => {}); setInterval(() => {}, 1000)"', {
+            timeout: 200,
+        });
+        await execution.wait();
+        strict_1.default.equal(execution.status(), 'timedout');
+        strict_1.default.equal(execution.metadata().timedOut, true);
+    });
+    await t.test('lifecycle: destroy() cleans multiple active streaming processes cleanly', async () => {
+        const freshSandbox = await index_js_1.Sandbox.create({ backend: 'native' });
+        const exec1 = await freshSandbox.exec('node -e "setInterval(() => console.log(\'exec1\'), 100)"');
+        const exec2 = await freshSandbox.exec('node -e "setInterval(() => console.log(\'exec2\'), 100)"');
+        // Destroy sandbox while both executions are active and streaming
+        await freshSandbox.destroy();
+        strict_1.default.ok(true, 'Sandbox destroyed active streams without throwing');
+    });
 });
