@@ -17,6 +17,9 @@ export declare class NativeBackend implements BackendEngine {
     init(options: SandboxOptions): Promise<void>;
     exec(command: string, options?: ExecOptions): Promise<ExecResult>;
     private resolveSandboxPath;
+    private getDirectorySize;
+    private assertDiskQuotaAvailable;
+    private parseSizeStringToBytes;
     readFile(filePath: string): Promise<Buffer>;
     writeFile(filePath: string, content: Buffer | string): Promise<void>;
     uploadFile(localPath: string, sandboxPath: string): Promise<void>;

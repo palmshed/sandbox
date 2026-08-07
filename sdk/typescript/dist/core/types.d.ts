@@ -15,6 +15,8 @@ export interface SandboxOptions {
     cpu?: number;
     /** Memory limit e.g. "512MB" */
     memory?: string | number;
+    /** Disk storage quota limit e.g. "100MB", "1GB" or bytes */
+    diskQuota?: string | number;
     /** Global command execution timeout in milliseconds */
     timeout?: number;
     /** Network access policy */
@@ -29,6 +31,8 @@ export interface SandboxOptions {
 export interface ExecOptions {
     /** Override default execution timeout for this run (ms) */
     timeout?: number;
+    /** Memory limit for this execution, e.g. "256MB" or bytes. Overrides sandbox-level memory option. */
+    memory?: string | number;
     /** Custom working directory relative to sandbox root */
     workDir?: string;
     /** Environment variables overlay */
@@ -77,8 +81,23 @@ export interface ExecResult {
     /** Structured execution metadata */
     metadata: ExecutionMetadata;
 }
+export type ResourceErrorCode = 'ERR_CPU_EXCEEDED' | 'ERR_OOM_EXCEEDED' | 'ERR_DISK_QUOTA_EXCEEDED';
+export interface SandboxResourceErrorDetails {
+    resource: 'cpu' | 'memory' | 'disk';
+    limit: string | number;
+    observed?: string | number;
+    recoverable: boolean;
+}
 export declare class SandboxError extends Error {
-    readonly code: 'TIMEOUT' | 'OOM' | 'INVALID_BACKEND' | 'EXEC_FAILED' | 'FS_ERROR' | 'UNKNOWN';
+    readonly code: 'TIMEOUT' | 'OOM' | 'INVALID_BACKEND' | 'EXEC_FAILED' | 'FS_ERROR' | ResourceErrorCode | 'UNKNOWN';
     readonly details?: unknown | undefined;
-    constructor(message: string, code: 'TIMEOUT' | 'OOM' | 'INVALID_BACKEND' | 'EXEC_FAILED' | 'FS_ERROR' | 'UNKNOWN', details?: unknown | undefined);
+    constructor(message: string, code: 'TIMEOUT' | 'OOM' | 'INVALID_BACKEND' | 'EXEC_FAILED' | 'FS_ERROR' | ResourceErrorCode | 'UNKNOWN', details?: unknown | undefined);
+}
+export declare class SandboxResourceError extends SandboxError {
+    readonly code: ResourceErrorCode;
+    readonly resource: 'cpu' | 'memory' | 'disk';
+    readonly limit: string | number;
+    readonly observed?: string | number;
+    readonly recoverable: boolean;
+    constructor(message: string, code: ResourceErrorCode, details: SandboxResourceErrorDetails);
 }
