@@ -1,0 +1,7 @@
+#!/usr/bin/env sh
+mkdir -p .git/hooks
+cp hooks/pre-commit .git/hooks/pre-commit 2>/dev/null || true
+cp hooks/commit-msg .git/hooks/commit-msg 2>/dev/null || true
+cp hooks/pre-push .git/hooks/pre-push 2>/dev/null || true
+chmod +x .git/hooks/* 2>/dev/null || true
+echo "Git guardrail hooks installed into .git/hooks/"

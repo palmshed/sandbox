@@ -139,12 +139,28 @@ class DockerBackend {
             child.on('close', (code) => {
                 if (timer)
                     clearTimeout(timer);
+                const finishedAtMs = Date.now();
+                const durationMs = finishedAtMs - startTime;
+                const execId = `exec_${Math.random().toString(36).substring(2, 10)}`;
+                const exitCode = timedOut ? -1 : (code ?? 0);
+                const metadata = {
+                    id: execId,
+                    backend: this.name,
+                    specVersion: '0.1.0',
+                    startedAt: new Date(startTime).toISOString(),
+                    finishedAt: new Date(finishedAtMs).toISOString(),
+                    durationMs,
+                    exitCode,
+                    timedOut,
+                };
                 resolve({
-                    exitCode: timedOut ? -1 : (code ?? 0),
+                    id: execId,
+                    exitCode,
                     stdout: stdoutAcc,
                     stderr: stderrAcc,
-                    durationMs: Date.now() - startTime,
+                    durationMs,
                     timedOut,
+                    metadata,
                 });
             });
         });

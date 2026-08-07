@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+echo "Executing pre-push specification synchronization check..."
+node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js

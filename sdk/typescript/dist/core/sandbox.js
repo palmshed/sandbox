@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Sandbox = void 0;
 const index_js_1 = require("../backends/index.js");
+const execution_js_1 = require("./execution.js");
 class Sandbox {
     backendEngine;
     isDestroyed = false;
@@ -39,10 +40,11 @@ class Sandbox {
     get capabilities() {
         return this.backendEngine.capabilities;
     }
-    /** Run a process inside the sandbox runtime */
+    /** Run a process inside the sandbox runtime and return an Execution handle */
     async exec(command, options) {
         this.ensureActive();
-        return await this.backendEngine.exec(command, options);
+        const result = await this.backendEngine.exec(command, options);
+        return new execution_js_1.Execution(result);
     }
     /** Read file content from the sandbox filesystem */
     async readFile(filePath) {

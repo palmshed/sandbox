@@ -1,0 +1,21 @@
+name: Release Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build TypeScript Reference SDK
+        run: cd sdk/typescript && npm ci && npm run build
+
+      - name: Run Verification Matrix
+        run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js

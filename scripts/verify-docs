@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+echo "Verifying markdown README existence..."
+test -f README.md && test -f AGENTS.md && test -f spec/README.md && test -f backends/README.md && test -f sdk/README.md && test -f compliance/README.md && test -f tck/README.md && test -f rfcs/README.md && test -f examples/README.md && test -f .github/workflows/README.md

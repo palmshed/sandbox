@@ -1,4 +1,5 @@
-import { ExecOptions, ExecResult, SandboxOptions } from './types.js';
+import { Execution } from './execution.js';
+import { ExecOptions, SandboxOptions } from './types.js';
 export declare class Sandbox {
     private backendEngine;
     private isDestroyed;
@@ -25,8 +26,8 @@ export declare class Sandbox {
     get backendName(): string;
     /** Negotiated capability flags of the active execution backend */
     get capabilities(): import("../backends/interface.js").BackendCapabilities;
-    /** Run a process inside the sandbox runtime */
-    exec(command: string, options?: ExecOptions): Promise<ExecResult>;
+    /** Run a process inside the sandbox runtime and return an Execution handle */
+    exec(command: string, options?: ExecOptions): Promise<Execution>;
     /** Read file content from the sandbox filesystem */
     readFile(filePath: string): Promise<Buffer>;
     /** Write string or Buffer content to a file inside the sandbox filesystem */

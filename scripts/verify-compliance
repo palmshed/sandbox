@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+echo "Running pre-push compliance checks..."
+node --test compliance/sdk/*.test.js compliance/backends/*.test.js

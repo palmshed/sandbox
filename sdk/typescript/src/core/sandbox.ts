@@ -1,4 +1,5 @@
 import { BackendEngine, createBackend } from '../backends/index.js';
+import { Execution } from './execution.js';
 import { ExecOptions, ExecResult, SandboxOptions } from './types.js';
 
 export class Sandbox {
@@ -43,10 +44,11 @@ export class Sandbox {
     return this.backendEngine.capabilities;
   }
 
-  /** Run a process inside the sandbox runtime */
-  async exec(command: string, options?: ExecOptions): Promise<ExecResult> {
+  /** Run a process inside the sandbox runtime and return an Execution handle */
+  async exec(command: string, options?: ExecOptions): Promise<Execution> {
     this.ensureActive();
-    return await this.backendEngine.exec(command, options);
+    const result = await this.backendEngine.exec(command, options);
+    return new Execution(result);
   }
 
   /** Read file content from the sandbox filesystem */

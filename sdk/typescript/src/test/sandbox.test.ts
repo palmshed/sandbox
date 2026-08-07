@@ -12,29 +12,38 @@ test('Native Backend Sandbox Execution', async (t) => {
     await sandbox.destroy();
   });
 
-  await t.test('executes echo command', async () => {
-    const res = await sandbox.exec('echo "Hello Palmshed Sandbox"');
-    assert.equal(res.exitCode, 0);
-    assert.match(res.stdout, /Hello Palmshed Sandbox/);
+  await t.test('executes echo command and returns Execution handle', async () => {
+    const execution = await sandbox.exec('echo "Hello Palmshed Sandbox"');
+    assert.equal(execution.exitCode, 0);
+    assert.match(execution.stdout, /Hello Palmshed Sandbox/);
+    // Execution metadata is always present
+    assert.match(execution.id, /^exec_/);
+    assert.equal(execution.metadata.backend, 'native');
+    assert.equal(execution.metadata.specVersion, '0.1.0');
+    assert.equal(typeof execution.metadata.startedAt, 'string');
+    assert.equal(typeof execution.metadata.finishedAt, 'string');
+    assert.equal(execution.metadata.exitCode, 0);
+    assert.equal(execution.metadata.timedOut, false);
   });
 
   await t.test('streams stdout output', async () => {
     let captured = '';
-    const res = await sandbox.exec('echo "Stream Chunk"', {
+    const execution = await sandbox.exec('echo "Stream Chunk"', {
       onStdout: (data: string) => {
         captured += data;
       },
     });
-    assert.equal(res.exitCode, 0);
+    assert.equal(execution.exitCode, 0);
     assert.match(captured, /Stream Chunk/);
   });
 
-  await t.test('handles command timeout', async () => {
-    const res = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
+  await t.test('handles command timeout and reports via metadata', async () => {
+    const execution = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
       timeout: 200,
     });
-    assert.equal(res.timedOut, true);
-    assert.equal(res.exitCode, -1);
+    assert.equal(execution.timedOut, true);
+    assert.equal(execution.exitCode, -1);
+    assert.equal(execution.metadata.timedOut, true);
   });
 
   await t.test('filesystem write, read, upload, download', async () => {

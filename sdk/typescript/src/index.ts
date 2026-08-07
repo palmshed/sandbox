@@ -1,8 +1,10 @@
 export { Sandbox } from './core/sandbox.js';
+export { Execution } from './core/execution.js';
 export {
   SandboxOptions,
   ExecOptions,
   ExecResult,
+  ExecutionMetadata,
   ResourceLimits,
   NetworkPolicy,
   SandboxError,

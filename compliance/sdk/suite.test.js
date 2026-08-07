@@ -17,30 +17,40 @@ test('Conformance Suite: Core Spec Verification (TypeScript SDK) [Spec-Version: 
   });
 
   await t.test('Spec: Command Execution & Exit Code [Spec-Version: 0.1.0]', async () => {
-    const res = await sandbox.exec('echo "Compliance Test"');
-    assert.equal(res.exitCode, 0);
-    assert.equal(typeof res.stdout, 'string');
-    assert.equal(typeof res.stderr, 'string');
-    assert.equal(typeof res.durationMs, 'number');
-    assert.equal(res.timedOut, false);
+    const execution = await sandbox.exec('echo "Compliance Test"');
+    assert.equal(execution.exitCode, 0);
+    assert.equal(typeof execution.stdout, 'string');
+    assert.equal(typeof execution.stderr, 'string');
+    assert.equal(typeof execution.durationMs, 'number');
+    assert.equal(execution.timedOut, false);
+  });
+
+  await t.test('Spec: Execution Metadata [Spec-Version: 0.1.0]', async () => {
+    const execution = await sandbox.exec('echo "Metadata"');
+    assert.match(execution.id, /^exec_/);
+    assert.equal(execution.metadata.backend, 'native');
+    assert.equal(execution.metadata.specVersion, '0.1.0');
+    assert.equal(typeof execution.metadata.startedAt, 'string');
+    assert.equal(typeof execution.metadata.finishedAt, 'string');
   });
 
   await t.test('Spec: Real-time stdout streaming [Spec-Version: 0.1.0]', async () => {
     let captured = '';
-    const res = await sandbox.exec('echo "Stream Chunk"', {
+    const execution = await sandbox.exec('echo "Stream Chunk"', {
       onStdout: (data) => {
         captured += data;
       },
     });
-    assert.equal(res.exitCode, 0);
+    assert.equal(execution.exitCode, 0);
     assert.match(captured, /Stream Chunk/);
   });
 
   await t.test('Spec: Timeout Enforcement [Spec-Version: 0.1.0]', async () => {
-    const res = await sandbox.exec('node -e "setTimeout(() => {}, 5000)"', {
+    const execution = await sandbox.exec('node -e "setTimeout(() => {}, 5000)"', {
       timeout: 150,
     });
-    assert.equal(res.timedOut, true);
-    assert.equal(res.exitCode, -1);
+    assert.equal(execution.timedOut, true);
+    assert.equal(execution.exitCode, -1);
+    assert.equal(execution.metadata.timedOut, true);
   });
 });

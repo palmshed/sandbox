@@ -49,7 +49,20 @@ export interface ExecOptions {
   onStderr?: (data: string) => void;
 }
 
+export interface ExecutionMetadata {
+  id: string;
+  backend: string;
+  specVersion: string;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  exitCode: number;
+  timedOut: boolean;
+}
+
 export interface ExecResult {
+  /** Execution ID */
+  id: string;
   /** Process exit code (0 usually indicates success) */
   exitCode: number;
   /** Captured stdout output */
@@ -60,6 +73,8 @@ export interface ExecResult {
   durationMs: number;
   /** True if execution was terminated due to timeout */
   timedOut: boolean;
+  /** Structured execution metadata */
+  metadata: ExecutionMetadata;
 }
 
 export class SandboxError extends Error {

@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+MSG=$(cat "$1")
+if [ -z "$MSG" ]; then
+  echo "Commit message cannot be empty"
+  exit 1
+fi

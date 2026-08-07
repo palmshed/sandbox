@@ -47,27 +47,36 @@ const index_js_1 = require("../index.js");
     t.after(async () => {
         await sandbox.destroy();
     });
-    await t.test('executes echo command', async () => {
-        const res = await sandbox.exec('echo "Hello Palmshed Sandbox"');
-        strict_1.default.equal(res.exitCode, 0);
-        strict_1.default.match(res.stdout, /Hello Palmshed Sandbox/);
+    await t.test('executes echo command and returns Execution handle', async () => {
+        const execution = await sandbox.exec('echo "Hello Palmshed Sandbox"');
+        strict_1.default.equal(execution.exitCode, 0);
+        strict_1.default.match(execution.stdout, /Hello Palmshed Sandbox/);
+        // Execution metadata is always present
+        strict_1.default.match(execution.id, /^exec_/);
+        strict_1.default.equal(execution.metadata.backend, 'native');
+        strict_1.default.equal(execution.metadata.specVersion, '0.1.0');
+        strict_1.default.equal(typeof execution.metadata.startedAt, 'string');
+        strict_1.default.equal(typeof execution.metadata.finishedAt, 'string');
+        strict_1.default.equal(execution.metadata.exitCode, 0);
+        strict_1.default.equal(execution.metadata.timedOut, false);
     });
     await t.test('streams stdout output', async () => {
         let captured = '';
-        const res = await sandbox.exec('echo "Stream Chunk"', {
+        const execution = await sandbox.exec('echo "Stream Chunk"', {
             onStdout: (data) => {
                 captured += data;
             },
         });
-        strict_1.default.equal(res.exitCode, 0);
+        strict_1.default.equal(execution.exitCode, 0);
         strict_1.default.match(captured, /Stream Chunk/);
     });
-    await t.test('handles command timeout', async () => {
-        const res = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
+    await t.test('handles command timeout and reports via metadata', async () => {
+        const execution = await sandbox.exec('node -e "setTimeout(() => {}, 10000)"', {
             timeout: 200,
         });
-        strict_1.default.equal(res.timedOut, true);
-        strict_1.default.equal(res.exitCode, -1);
+        strict_1.default.equal(execution.timedOut, true);
+        strict_1.default.equal(execution.exitCode, -1);
+        strict_1.default.equal(execution.metadata.timedOut, true);
     });
     await t.test('filesystem write, read, upload, download', async () => {
         await sandbox.writeFile('hello.txt', 'Virtual filesystem works!');
