@@ -20,6 +20,9 @@ export declare class NativeBackend implements BackendEngine {
     private getDirectorySize;
     private assertDiskQuotaAvailable;
     private parseSizeStringToBytes;
+    private getChildPids;
+    private getDescendantPids;
+    private cleanupProcessTree;
     readFile(filePath: string): Promise<Buffer>;
     writeFile(filePath: string, content: Buffer | string): Promise<void>;
     uploadFile(localPath: string, sandboxPath: string): Promise<void>;

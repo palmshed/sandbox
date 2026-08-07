@@ -3,8 +3,9 @@
  *
  * Usage: node repro/run.js [--network]
  *
- * By default the network repros are skipped because they document the open
- * RFC 0004 gap and are expected to fail. Pass --network to include them.
+ * Network repros always run. Because networkIsolation is not yet
+ * implemented on the Native backend, their failures are classified as
+ * expected failures. Pass --network for verbose output on network repros.
  */
 'use strict';
 
@@ -13,32 +14,40 @@ const fs = require('fs');
 const path = require('path');
 
 const root = __dirname;
-const includeNetwork = process.argv.includes('--network');
+const verboseNetwork = process.argv.includes('--network');
 
-const dirs = ['cpu', 'memory', 'process', 'disk'];
-if (includeNetwork) dirs.push('network');
+const dirs = ['cpu', 'memory', 'process', 'disk', 'network'];
 
 let passed = 0;
-let failed = 0;
+let expectedFailures = 0;
+let unexpectedFailures = 0;
 const failures = [];
 
 for (const dir of dirs) {
   const dirPath = path.join(root, dir);
   for (const file of fs.readdirSync(dirPath).filter((f) => f.endsWith('.js')).sort()) {
     const script = path.join(dirPath, file);
+    const label = `${dir}/${file}`;
     try {
-      execFileSync(process.execPath, [script], { stdio: ['ignore', 'inherit', 'inherit'] });
+      execFileSync(process.execPath, [script], {
+        stdio: verboseNetwork || dir !== 'network' ? ['ignore', 'inherit', 'inherit'] : 'pipe',
+      });
       passed += 1;
-      console.log(`PASS  ${dir}/${file}`);
+      console.log(`PASS  ${label}`);
     } catch (e) {
-      failed += 1;
-      failures.push(`${dir}/${file}`);
-      console.log(`FAIL  ${dir}/${file}`);
+      if (dir === 'network') {
+        expectedFailures += 1;
+        console.log(`FAIL  ${label} (expected)`);
+      } else {
+        unexpectedFailures += 1;
+        failures.push(label);
+        console.log(`FAIL  ${label}`);
+      }
     }
   }
 }
 
-console.log(`\n${passed} passed, ${failed} failed`);
+console.log(`\n${passed} passed, ${expectedFailures} expected failures, ${unexpectedFailures} unexpected failures`);
 if (failures.length) {
   console.log('Failures:', failures.join(', '));
   process.exit(1);

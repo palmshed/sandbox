@@ -505,7 +505,7 @@ class NativeBackend {
                     clearTimeout(timer);
                 reject(new types_js_1.SandboxError(`Execution failed: ${err.message}`, 'EXEC_FAILED', err));
             });
-            child.on('close', (code) => {
+            child.on('close', async (code) => {
                 settled = true;
                 this.activeProcesses.delete(child);
                 if (timer)
@@ -520,6 +520,10 @@ class NativeBackend {
                     const last = sampleGroupCpuTimeMs(child.pid);
                     if (last !== -1)
                         finalCpuTimeMs = last;
+                }
+                // Thorough cleanup: kill process group, then sweep escaped descendants
+                if (child.pid !== undefined) {
+                    await this.cleanupProcessTree(child.pid);
                 }
                 const finishedAtMs = Date.now();
                 const durationMs = finishedAtMs - startTime;
@@ -626,6 +630,103 @@ class NativeBackend {
         };
         return Math.floor(num * (multipliers[unit] || 1024 * 1024));
     }
+    getChildPids(parentPid) {
+        const children = [];
+        if (process.platform === 'linux') {
+            try {
+                const entries = fssync.readdirSync('/proc').filter((d) => /^\d+$/.test(d));
+                for (const d of entries) {
+                    let statRaw;
+                    try {
+                        statRaw = fssync.readFileSync(`/proc/${d}/stat`, 'utf-8');
+                    }
+                    catch {
+                        continue;
+                    }
+                    const closeParen = statRaw.lastIndexOf(')');
+                    if (closeParen === -1)
+                        continue;
+                    const rest = statRaw.slice(closeParen + 2).split(' ');
+                    const ppid = parseInt(rest[1], 10);
+                    if (ppid === parentPid) {
+                        children.push(parseInt(d, 10));
+                    }
+                }
+            }
+            catch {
+                // /proc unavailable
+            }
+        }
+        else {
+            let out;
+            try {
+                const { execSync } = require('child_process');
+                out = execSync('ps -o pid=,ppid=', { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+            }
+            catch {
+                return children;
+            }
+            for (const line of out.split('\n')) {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 2) {
+                    const pid = parseInt(parts[0], 10);
+                    const ppid = parseInt(parts[1], 10);
+                    if (ppid === parentPid && !isNaN(pid)) {
+                        children.push(pid);
+                    }
+                }
+            }
+        }
+        return children;
+    }
+    getDescendantPids(rootPid) {
+        const descendants = [];
+        const queue = [rootPid];
+        const visited = new Set();
+        while (queue.length > 0) {
+            const pid = queue.shift();
+            if (visited.has(pid))
+                continue;
+            visited.add(pid);
+            const children = this.getChildPids(pid);
+            for (const childPid of children) {
+                descendants.push(childPid);
+                queue.push(childPid);
+            }
+        }
+        return descendants;
+    }
+    async cleanupProcessTree(rootPid) {
+        if (rootPid === undefined)
+            return;
+        if (process.platform !== 'win32') {
+            try {
+                process.kill(-rootPid, 'SIGKILL');
+            }
+            catch {
+                // process group may already be gone
+            }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        let remaining = this.getDescendantPids(rootPid);
+        let iterations = 0;
+        while (remaining.length > 0 && iterations < 10) {
+            for (const pid of remaining) {
+                try {
+                    process.kill(pid, 'SIGKILL');
+                }
+                catch {
+                    // process may have already exited
+                }
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            remaining = this.getDescendantPids(rootPid);
+            iterations++;
+        }
+        if (remaining.length > 0) {
+            console.warn(`Process tree cleanup incomplete: ${remaining.length} descendant(s) remain after ${iterations} iterations`);
+        }
+    }
     async readFile(filePath) {
         const target = this.resolveSandboxPath(filePath);
         return await fs.readFile(target);
@@ -650,28 +751,10 @@ class NativeBackend {
         await fs.copyFile(source, localPath);
     }
     async destroy() {
-        // Kill all active child processes before cleaning up the sandbox directory
+        // Thoroughly kill all active child processes and their escaped descendants
         for (const child of this.activeProcesses) {
-            try {
-                const isWin = process.platform === 'win32';
-                if (!isWin && child.pid !== undefined) {
-                    process.kill(-child.pid, 'SIGKILL');
-                }
-                else if (isWin && child.pid !== undefined) {
-                    const { execSync } = require('child_process');
-                    try {
-                        execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' });
-                    }
-                    catch {
-                        child.kill('SIGKILL');
-                    }
-                }
-                else {
-                    child.kill('SIGKILL');
-                }
-            }
-            catch {
-                // Process may have already exited
+            if (child.pid !== undefined) {
+                await this.cleanupProcessTree(child.pid);
             }
         }
         this.activeProcesses.clear();

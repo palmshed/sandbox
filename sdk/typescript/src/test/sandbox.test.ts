@@ -187,14 +187,19 @@ test('Native Backend Sandbox Execution', async (t) => {
     // Use an absurdly small limit (1MB) to deterministically trigger OOM on a Node allocation
     const memSandbox = await Sandbox.create({ backend: 'native' });
 
-    // A Node.js process that allocates ~50MB deliberately
+    // A Node.js process that allocates ~50MB deliberately. Touching each page
+    // ensures the OS actually commits RSS, giving the 100ms poller a
+    // deterministic observation window.
     const allocScript = `
-      const chunks = [];
-      for (let i = 0; i < 50; i++) {
-        chunks.push(Buffer.alloc(1024 * 1024)); // 1MB per push
-      }
-      // Hold allocations and keep running so the poller can detect the breach
-      setInterval(() => {}, 100);
+      setTimeout(() => {
+        const chunks = [];
+        for (let i = 0; i < 50; i++) {
+          const buf = Buffer.alloc(1024 * 1024);
+          buf.fill('x');
+          chunks.push(buf);
+        }
+        setInterval(() => {}, 100);
+      }, 200);
     `.replace(/\n\s*/g, ' ');
 
     await assert.rejects(
@@ -223,9 +228,15 @@ test('Native Backend Sandbox Execution', async (t) => {
     const memSandbox = await Sandbox.create({ backend: 'native' });
 
     const allocScript = `
-      const chunks = [];
-      for (let i = 0; i < 50; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
-      setInterval(() => {}, 100);
+      setTimeout(() => {
+        const chunks = [];
+        for (let i = 0; i < 50; i++) {
+          const buf = Buffer.alloc(1024 * 1024);
+          buf.fill('x');
+          chunks.push(buf);
+        }
+        setInterval(() => {}, 100);
+      }, 200);
     `.replace(/\n\s*/g, ' ');
 
     // 1. Trigger OOM
@@ -257,9 +268,15 @@ test('Native Backend Sandbox Execution', async (t) => {
     // background holding ~47MB+. An 8MB limit is above the shell alone but far
     // below the child, so only group-wide sampling can detect the breach.
     const allocScript = `
-      const chunks = [];
-      for (let i = 0; i < 200; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
-      setInterval(() => {}, 100);
+      setTimeout(() => {
+        const chunks = [];
+        for (let i = 0; i < 200; i++) {
+          const buf = Buffer.alloc(1024 * 1024);
+          buf.fill('x');
+          chunks.push(buf);
+        }
+        setInterval(() => {}, 100);
+      }, 200);
     `.replace(/\n\s*/g, ' ');
 
     await assert.rejects(
@@ -288,9 +305,15 @@ test('Native Backend Sandbox Execution', async (t) => {
     const memSandbox = await Sandbox.create({ backend: 'native' });
 
     const allocScript = `
-      const chunks = [];
-      for (let i = 0; i < 200; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
-      setInterval(() => {}, 100);
+      setTimeout(() => {
+        const chunks = [];
+        for (let i = 0; i < 200; i++) {
+          const buf = Buffer.alloc(1024 * 1024);
+          buf.fill('x');
+          chunks.push(buf);
+        }
+        setInterval(() => {}, 100);
+      }, 200);
     `.replace(/\n\s*/g, ' ');
 
     // node is the pipeline producer with a small `cat` consumer; the shell
@@ -320,9 +343,15 @@ test('Native Backend Sandbox Execution', async (t) => {
     const memSandbox = await Sandbox.create({ backend: 'native' });
 
     const allocScript = `
-      const chunks = [];
-      for (let i = 0; i < 200; i++) { chunks.push(Buffer.alloc(1024 * 1024)); }
-      setInterval(() => {}, 100);
+      setTimeout(() => {
+        const chunks = [];
+        for (let i = 0; i < 200; i++) {
+          const buf = Buffer.alloc(1024 * 1024);
+          buf.fill('x');
+          chunks.push(buf);
+        }
+        setInterval(() => {}, 100);
+      }, 200);
     `.replace(/\n\s*/g, ' ');
 
     // 1. OOM kill of a background child
@@ -499,6 +528,48 @@ test('Native Backend Sandbox Execution', async (t) => {
     assert.match(recovery.stdout(), /alive after cpu kill/);
 
     await cpuSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: process tree fully cleaned after OOM with escaped descendants', async (t) => {
+    if (process.platform === 'win32') return t.skip('POSIX-only process group semantics');
+    const { SandboxResourceError } = await import('../index.js');
+    const memSandbox = await Sandbox.create({ backend: 'native' });
+
+    const allocScript = `
+      setTimeout(() => {
+        const chunks = [];
+        for (let i = 0; i < 200; i++) {
+          const buf = Buffer.alloc(1024 * 1024);
+          buf.fill('x');
+          chunks.push(buf);
+        }
+        setInterval(() => {}, 100);
+      }, 200);
+    `.replace(/\n\s*/g, ' ');
+
+    // 1. Trigger OOM on a background child process
+    await assert.rejects(
+      async () => {
+        await memSandbox.exec(`node -e "${allocScript}" & wait $!`, {
+          memory: '8MB',
+          timeout: 5000,
+        }).then(e => e.wait());
+      },
+      (err: unknown) => err instanceof SandboxResourceError && err.code === 'ERR_OOM_EXCEEDED'
+    );
+
+    // 2. Verify no escaped descendants remain (background jobs, nested children)
+    const leaked = await memSandbox.exec('pgrep -f "Buffer.alloc" || echo "none"');
+    await leaked.wait();
+    assert.match(leaked.stdout(), /none/, 'no leaked workload processes after OOM cleanup');
+
+    // 3. Sandbox remains reusable after thorough cleanup
+    const recovery = await memSandbox.exec('echo "tree fully cleaned"');
+    await recovery.wait();
+    assert.equal(recovery.status(), 'completed');
+    assert.match(recovery.stdout(), /tree fully cleaned/);
+
+    await memSandbox.destroy();
   });
 });
 
