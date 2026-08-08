@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs/promises';
+import * as path from 'path';
 import { BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions } from '../core/types.js';
 
@@ -22,6 +23,32 @@ export class DockerBackend implements BackendEngine {
   };
   private containerId: string = '';
   private options!: SandboxOptions;
+
+  /**
+   * Reject paths that escape the container VFS workspace or would break out of
+   * shell quoting in `sh -c` commands. The container root is the sandbox
+   * workspace, so absolute paths and `..` traversal are refused (FS_ERROR).
+   */
+  private static assertSafeContainerPath(p: string): string {
+    if (p.includes('\0')) {
+      throw new SandboxError('Invalid path: NUL byte', 'FS_ERROR');
+    }
+    const normalized = path.posix.normalize(p).replace(/^\.\//, '');
+    if (
+      normalized === '..' ||
+      normalized.startsWith('../') ||
+      normalized === '.' ||
+      normalized.startsWith('/')
+    ) {
+      throw new SandboxError('Path traversal attempt outside container workspace', 'FS_ERROR');
+    }
+    return normalized;
+  }
+
+  /** Single-quote a string for safe interpolation into an `sh -c` command. */
+  private static shellQuote(s: string): string {
+    return `'${s.replace(/'/g, `'\\''`)}'`;
+  }
 
   async init(options: SandboxOptions): Promise<void> {
     this.options = options;
@@ -81,7 +108,8 @@ export class DockerBackend implements BackendEngine {
   }
 
   async readFile(filePath: string): Promise<Buffer> {
-    const res = await this.runDockerCmd(['exec', this.containerId, 'cat', filePath]);
+    const target = DockerBackend.assertSafeContainerPath(filePath);
+    const res = await this.runDockerCmd(['exec', this.containerId, 'cat', target]);
     if (res.exitCode !== 0) {
       throw new SandboxError(`Failed to read file in container: ${res.stderr}`, 'FS_ERROR');
     }
@@ -89,12 +117,13 @@ export class DockerBackend implements BackendEngine {
   }
 
   async writeFile(filePath: string, content: Buffer | string): Promise<void> {
+    const target = DockerBackend.shellQuote(DockerBackend.assertSafeContainerPath(filePath));
     const strContent = typeof content === 'string' ? content : content.toString('base64');
     const isBase64 = typeof content !== 'string';
 
     const cmd = isBase64
-      ? `echo "${strContent}" | base64 -d > "${filePath}"`
-      : `cat << 'EOF' > "${filePath}"\n${strContent}\nEOF`;
+      ? `echo "${strContent}" | base64 -d > ${target}`
+      : `cat << 'EOF' > ${target}\n${strContent}\nEOF`;
 
     const res = await this.runDockerCmd(['exec', this.containerId, 'sh', '-c', cmd]);
     if (res.exitCode !== 0) {
@@ -103,14 +132,16 @@ export class DockerBackend implements BackendEngine {
   }
 
   async uploadFile(localPath: string, sandboxPath: string): Promise<void> {
-    const res = await this.runDockerCmd(['cp', localPath, `${this.containerId}:${sandboxPath}`]);
+    const target = DockerBackend.assertSafeContainerPath(sandboxPath);
+    const res = await this.runDockerCmd(['cp', localPath, `${this.containerId}:${target}`]);
     if (res.exitCode !== 0) {
       throw new SandboxError(`Failed to upload file to container: ${res.stderr}`, 'FS_ERROR');
     }
   }
 
   async downloadFile(sandboxPath: string, localPath: string): Promise<void> {
-    const res = await this.runDockerCmd(['cp', `${this.containerId}:${sandboxPath}`, localPath]);
+    const source = DockerBackend.assertSafeContainerPath(sandboxPath);
+    const res = await this.runDockerCmd(['cp', `${this.containerId}:${source}`, localPath]);
     if (res.exitCode !== 0) {
       throw new SandboxError(`Failed to download file from container: ${res.stderr}`, 'FS_ERROR');
     }
@@ -175,7 +206,7 @@ export class DockerBackend implements BackendEngine {
         const metadata = {
           id: execId,
           backend: this.name,
-          specVersion: '0.1.1',
+          specVersion: '0.1.2',
           startedAt: new Date(startTime).toISOString(),
           finishedAt: new Date(finishedAtMs).toISOString(),
           durationMs,
