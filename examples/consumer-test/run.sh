@@ -19,6 +19,9 @@ CONSUMER_DIR="$ROOT/examples/consumer-test"
 PKG_JSON="$CONSUMER_DIR/package.json"
 
 echo "=== 1. Building TypeScript SDK ==="
+# Ensure SDK dependencies are present so the build is reproducible without a
+# committed node_modules.
+(cd "$SDK_DIR" && npm ci)
 (cd "$SDK_DIR" && npm run build)
 
 echo "=== 2. Packing SDK artifact ==="

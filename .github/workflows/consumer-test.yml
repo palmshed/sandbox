@@ -25,6 +25,11 @@ jobs:
         with:
           node-version: '20'
 
+      # run.sh builds the SDK from source, which requires its dependencies.
+      # (Previously this relied on accidentally-committed node_modules.)
+      - name: Install SDK Dependencies
+        run: cd sdk/typescript && npm ci
+
       # Reproducible: build + pack + install-from-tarball + verify.
       # The packed artifact version is resolved dynamically by run.sh, so
       # version bumps never break this fixture.
