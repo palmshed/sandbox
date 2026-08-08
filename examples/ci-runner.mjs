@@ -17,7 +17,7 @@
  * The fixture projects are dependency-free so the sandbox can stay
  * `network: 'disabled'` (the only network policy the Native backend verifies).
  * A real CI pipeline that installs dependencies would enable network access
- * or seed a pre-warmed dependency cache -- out of scope for this example.
+ * or seed a pre-warmed dependency cache (out of scope for this example).
  *
  * Usage: node examples/ci-runner.mjs
  */

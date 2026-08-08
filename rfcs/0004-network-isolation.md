@@ -91,7 +91,7 @@ All six in-scope vectors are blocked. Notably `(deny network*)` also blocks loop
 | cgroup `net_cls`/`net_prio` | Does not block traffic; classification only | Not an isolation mechanism; rejected. |
 | `nftables`/`iptables` per-process owner match | Needs root | Rejected for unprivileged runtime. |
 
-Probe outcomes to confirm on an Ubuntu target before implementation: unprivileged `unshare --user --map-root-user` and `unshare --net`, and AppArmor confinement of the node runtime. **Finding on GitHub Actions `ubuntu-latest`**: `unshare -n --user --map-root-user` fails -- unprivileged user namespaces are restricted on the CI runner. The Native backend now probes at `init()` and falls back to proxy env vars, dynamically setting `networkIsolation: false` when the probe fails.
+Probe outcomes to confirm on an Ubuntu target before implementation: unprivileged `unshare --user --map-root-user` and `unshare --net`, and AppArmor confinement of the node runtime. **Finding on GitHub Actions `ubuntu-latest`**: `unshare -n --user --map-root-user` fails: unprivileged user namespaces are restricted on the CI runner. The Native backend now probes at `init()` and falls back to proxy env vars, dynamically setting `networkIsolation: false` when the probe fails.
 
 ### Candidate mechanisms: Windows
 

@@ -62,7 +62,7 @@ export class NativeBackend implements BackendEngine {
   /** realpath of sandboxDir, used as the containment base for VFS resolution */
   private sandboxRealDir: string = '';
   private options!: SandboxOptions;
-  /** Active child processes -- killed on destroy() */
+  /** Active child processes, killed on destroy() */
   private activeProcesses = new Set<ChildProcess>();
   /** Whether Linux unshare --user network namespace creation succeeded at init */
   private networkIsolationAvailable = true;

@@ -7,7 +7,7 @@
  * `networkIsolation: true` for this instance (macOS with sandbox-exec, or
  * Linux where the unshare --user probe succeeds). When the capability is
  * unavailable (Windows, or Linux CI where user namespaces are restricted),
- * network repros are SKIPPED -- they are a measurement, not a guarantee, on
+ * network repros are SKIPPED: they are a measurement, not a guarantee, on
  * such hosts. Use --all-network to force-run them regardless (they will
  * likely fail where the capability is off, which is expected).
  *
