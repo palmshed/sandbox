@@ -40,16 +40,20 @@
       "default": "disabled",
       "description": "Network access control policy"
     },
+    "diskQuota": {
+      "type": ["string", "number"],
+      "description": "Disk storage quota for the sandbox workspace (e.g. '100MB', '1GB', or bytes). Enforced on VFS writes and, during execution, across the workspace via process-group kill with ERR_DISK_QUOTA_EXCEEDED."
+    },
     "workDir": {
       "type": "string",
-      "description": "Working directory inside the sandbox environment"
+      "description": "Working directory inside the sandbox workspace. Contained to the sandbox root: path traversal or absolute host paths are rejected (FS_ERROR)."
     },
     "env": {
       "type": "object",
       "additionalProperties": {
         "type": "string"
       },
-      "description": "Environment variables key-value map"
+      "description": "Explicit environment variables injected into executions. The host environment is NOT inherited wholesale; only a documented minimal allowlist (PATH, HOME, temp/locale variables) is carried from the host. These explicit values override the allowlist."
     },
     "image": {
       "type": "string",

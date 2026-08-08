@@ -1,6 +1,6 @@
 # Sandbox Specification Versioning
 
-Current Specification Version: **0.1.1**
+Current Specification Version: **0.1.2**
 
 ## Versioning Rules
 
@@ -11,6 +11,13 @@ The Palmshed Sandbox specification follows Semantic Versioning (MAJOR.MINOR.PATC
 - **PATCH**: Backward-compatible bug fixes or clarifications in documentation and JSON schemas.
 
 ## Specification Changelog
+
+### v0.1.2 (Filesystem boundary & environment contract)
+- Added `diskQuota` to `sandbox.schema.json`: enforced on VFS writes and, during execution, across the sandbox workspace via process-group kill (`ERR_DISK_QUOTA_EXCEEDED`).
+- Defined the VFS isolation boundary: `readFile`, `writeFile`, `uploadFile`, `downloadFile`, and `exec().workDir` are contained to the sandbox root. Path traversal (`..`), absolute host paths, and symlink escapes are rejected with `FS_ERROR`. Clarified in RFC 0003 and `SECURITY.md`.
+- Defined the environment contract: the host environment is NOT inherited wholesale; a documented minimal allowlist (PATH, HOME, temp/locale variables) is carried, and explicit `env` values (sandbox-level and per-execution) override it.
+- Clarified `workDir` semantics: contained to the sandbox root and created if absent.
+- Clarified the `filesystem` capability: it means isolated virtual filesystem operations (the VFS boundary above), not host-filesystem isolation of the executing process.
 
 ### v0.1.1 (CPU resource contract addition)
 - Added `cpuTimeLimit` (integer ms) to `sandbox.schema.json` and `exec.schema.json`: a supported CPU time budget enforced across the process group, distinct from wall-clock `timeout`.

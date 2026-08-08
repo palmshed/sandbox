@@ -26,13 +26,15 @@
           "description": "CPU core allocation quota for this execution (experimental)."
         },
         "workDir": {
-          "type": "string"
+          "type": "string",
+          "description": "Working directory for this execution, relative to the sandbox root and contained to it (path traversal or absolute host paths are rejected with FS_ERROR). Created if absent."
         },
         "env": {
           "type": "object",
           "additionalProperties": {
             "type": "string"
-          }
+          },
+          "description": "Environment variables for this execution, overlaid onto the sandbox-level env. The host environment is not inherited wholesale (see sandbox.schema.json env)."
         }
       },
       "additionalProperties": false

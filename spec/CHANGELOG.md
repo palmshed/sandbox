@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.1.2] - 2026-08-08
+
+### Added
+- `diskQuota` field in `sandbox.schema.json` (schema already supported by the SDK).
+- Formalized the VFS isolation boundary in RFC 0003 and `SECURITY.md`: `readFile`, `writeFile`, `uploadFile`, `downloadFile`, and `exec().workDir` are contained to the sandbox root; path traversal, absolute host paths, and symlink escapes are rejected with `FS_ERROR`.
+- Formalized the environment contract: a minimal allowlist of host variables (PATH, HOME, temp/locale) is inherited; explicit `env` values override it; the host environment is otherwise not inherited.
+
+### Changed
+- `env` semantics: host environment variables are no longer passed to executions wholesale (previously `...process.env`). This closes host-secret leakage to untrusted workloads.
+- `workDir` semantics: contained to the sandbox root and created if absent (previously resolvable to arbitrary host paths).
+- `filesystem` capability clarified: isolated VFS operations, not host-filesystem isolation of the executing process. The Native backend runs workloads as the host user.
+
+### Fixed
+- `writeFile`/`uploadFile`/`downloadFile`/`readFile` now reject symlink escapes (a workload-planted symlink could previously redirect VFS reads/writes/transfers outside the sandbox root).
+- Disk quota is now enforced during execution via workspace-size polling with process-group kill (`ERR_DISK_QUOTA_EXCEEDED`), closing the exec-write bypass where workloads could write unlimited data despite `diskQuota`.
+
+---
+
 ## [0.1.1] - 2026-08-08
 
 ### Added
