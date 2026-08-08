@@ -148,11 +148,11 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 > **Goal**: Make integration intuitive and self-documenting.
 
-- [ ] TypeScript API documentation and automated reference doc generation
-- [ ] Practical recipes and common integration pattern examples
-- [ ] Actionable error messages detailing root cause and recovery steps
-- [ ] Built-in debug logging mode (`SANDBOX_LOG=debug`)
-- [ ] Ergonomic API refinements for `sandbox.exec()`, `sandbox.writeFile()`, `sandbox.readFile()`, and `sandbox.destroy()`
+- [x] TypeScript API documentation and automated reference doc generation (`docs/api.md` + Typedoc from `sdk/typescript/src/index.ts` via `npm run docs`; `docs.yml` fails CI if generation breaks)
+- [x] Practical recipes and common integration pattern examples
+- [x] Actionable error messages detailing root cause and recovery steps (`docs/errors.md` — error code, meaning, cause, recovery, sandbox-reuse expectation)
+- [x] Built-in debug logging mode (`SANDBOX_LOG=debug`, off by default; lifecycle/resource events to stderr, consistent across native and Docker backends, never secrets/command/filesystem content)
+- [x] Ergonomic API refinements for `sandbox.exec()`, `sandbox.writeFile()`, `sandbox.readFile()`, and `sandbox.destroy()`
 
 ---
 
@@ -162,8 +162,8 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 - [x] **Concurrency Testing**: 10 concurrent sandboxes + 8 parallel executions in a single sandbox (stress suite, `sdk/typescript/src/test/stress.test.ts`)
 - [x] **Lifecycle Stress Testing**: 50 rapid create → destroy cycles and destroy-while-in-flight (`stress.test.ts`); separate crash/destroy coverage in lifecycle test suite
-- [ ] **Crash Recovery**: Graceful cleanup upon host process crash or unexpected backend disconnection
-- [ ] **Longer Concurrent Execution Testing**: extend the stress suite beyond the current 10-sandbox / 8-execution bounds; the one-off 10-concurrent-sandbox `echo` timeout observed on `windows-latest` (2026-08-08, commit `d760757`, not reproduced on re-run) is treated as a **reliability signal** to monitor here rather than reopened resource-enforcement work
+- [ ] **Crash Recovery** (#10): Graceful cleanup upon host process crash or unexpected backend disconnection — tracked separately from concurrency with its own design and failure model
+- [x] **Longer Concurrent Execution Testing**: sustained concurrent workload test (10 sandboxes × 3 staggered rounds interleaving healthy executions, CPU-budget kills, reuse probes, and concurrent destroy). The `d760757` Windows flake **reproduced** on `a136c7a` (a single `echo` exceeded the 10s timeout while the other test file's PowerShell CIM samplers saturated the 2-vCPU runner) and was **fixed** rather than masked: `node --test --test-concurrency=1` serializes the SDK test files so each test's internal concurrency is preserved without cross-file CPU starvation (3 consecutive green Windows runs on `8d9f40e`)
 - [x] **Multi-Platform CI Matrix**: Automated CI verification on Ubuntu, macOS, and Windows (`ci.yml` + `compliance.yml` matrices, commit `ebd32be`)
 - [x] **Reproducible Guarantee Lab in CI**: `node repro/run.js` runs in the CI matrix with capability-aware network skip
 
