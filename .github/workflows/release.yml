@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   validate-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -66,9 +66,36 @@ jobs:
       - name: Run Compliance Suite & TCK
         run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js
 
+      - name: Verify npm package contents (pack --dry-run)
+        run: |
+          cd sdk/typescript
+          npm pack --dry-run --json | node -e "
+            let d = '';
+            process.stdin.on('data', (c) => { d += c; });
+            process.stdin.on('end', () => {
+              const pack = JSON.parse(d)[0];
+              const paths = pack.files.map((f) => f.path);
+              const required = ['package.json', 'dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE'];
+              for (const r of required) {
+                if (!paths.includes(r)) {
+                  console.error('missing from tarball: ' + r);
+                  process.exit(1);
+                }
+              }
+              const forbidden = [/^dist\/test\//, /typedoc/];
+              for (const p of paths) {
+                if (forbidden.some((re) => re.test(p))) {
+                  console.error('unexpected file in tarball: ' + p);
+                  process.exit(1);
+                }
+              }
+              console.log('tarball contents OK: ' + pack.entryCount + ' files, ' + pack.size + ' bytes');
+            });
+          "
+
   build-artifacts:
     needs: validate-and-test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
     steps:
@@ -160,7 +187,7 @@ jobs:
 
   create-github-release:
     needs: [validate-and-test, build-artifacts]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       id-token: write
@@ -183,7 +210,7 @@ jobs:
 
   publish-typescript:
     needs: create-github-release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -211,9 +238,51 @@ jobs:
       - name: Publish to npm
         run: cd sdk/typescript && npm publish --access public --tag ${{ steps.npm_tag.outputs.npm_tag }}
 
+      # Post-publish verification against the freshly published package. The npm
+      # registry can take a few seconds to propagate the new version, so retry
+      # the install before failing the release.
+      - name: Smoke test published package from registry
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          TAG_VERSION="${TAG#v}"
+          cd /tmp
+          mkdir -p registry-smoke && cd registry-smoke
+          npm init -y > /dev/null
+          INSTALLED=""
+          for i in 1 2 3 4 5 6; do
+            if npm install "@palmshed/sandbox@${TAG_VERSION}" --no-audit --no-fund >/dev/null 2>&1; then
+              INSTALLED=1
+              break
+            fi
+            sleep 10
+          done
+          if [ -z "$INSTALLED" ]; then
+            echo "::error::package did not become available on the registry"
+            exit 1
+          fi
+          node -e "
+            const { Sandbox } = require('@palmshed/sandbox');
+            (async () => {
+              const s = await Sandbox.create({ backend: 'native', timeout: 5000 });
+              const e = await s.exec('echo release-ok');
+              await e.wait();
+              if (e.exitCode !== 0 || !/release-ok/.test(e.stdout())) {
+                throw new Error('published package execution failed');
+              }
+              const v = require('@palmshed/sandbox/package.json').version;
+              if (v !== process.env.EXPECTED_VERSION.replace(/^v/, '')) {
+                throw new Error('version mismatch: installed ' + v + ', expected ' + process.env.EXPECTED_VERSION);
+              }
+              console.log('registry smoke OK: version=' + v);
+              await s.destroy();
+            })().catch((err) => { console.error(err); process.exit(1); });
+          "
+        env:
+          EXPECTED_VERSION: ${{ github.ref_name }}
+
   publish-rust:
     needs: create-github-release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: false # Activated when Phase 2 Rust SDK lands
     steps:
       - name: Rust Core Engine Gate
@@ -221,7 +290,7 @@ jobs:
 
   publish-python:
     needs: create-github-release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: false # Activated when Phase 3 Python SDK lands
     steps:
       - name: Python SDK Gate
@@ -229,7 +298,7 @@ jobs:
 
   publish-go:
     needs: create-github-release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: false # Activated when Phase 3 Go SDK lands
     steps:
       - name: Go SDK Gate

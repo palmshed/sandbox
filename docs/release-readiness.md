@@ -24,7 +24,7 @@ promises below are enforceable.
   - [ ] Zero runtime dependencies.
   - [ ] `engines` declares supported Node.js LTS lines.
 - [ ] **Runtime matrix**:
-  - [ ] Node.js LTS lines (20, 22) covered in CI (`ci.yml` `node-lts` job; Node 22 currently verified on Ubuntu only, macOS/Windows coverage pending).
+  - [x] Node.js LTS lines (20, 22) covered in CI (`ci.yml` `node-lts` job on ubuntu, macOS, and Windows).
   - [x] Linux distribution / macOS compatibility matrix documented (see below).
 - [ ] **Verification gates**:
   - [x] All examples verified against the packed release artifact in CI
@@ -39,20 +39,21 @@ promises below are enforceable.
 The matrix records only what CI actually verifies today, using the GitHub
 Actions `-latest` labels as of 2026-08. These are rolling labels, so the
 underlying OS versions move over time (for example, `macos-latest` is an ARM64
-image currently transitioning from macOS 15 to macOS 26). Pin a specific runner
-label in the release workflow before freezing the matrix at v1.0.0.
+image currently transitioning from macOS 15 to macOS 26). The release workflow
+pins `ubuntu-24.04`; the daily CI matrix intentionally tracks the `-latest`
+labels.
 
 | Platform (runner label) | Arch | Node.js LTS | Network isolation | CPU / memory limits | CI coverage |
 |-------------------------|------|-------------|-------------------|---------------------|-------------|
 | Ubuntu 24.04 (`ubuntu-latest`) | x64 | 20 and 22 | Supported when `unshare --user --map-root-user` is available; `false` on restricted runners (proxy-env fallback) | Supported (process-group sampling) | `ci.yml` (build-and-test + `node-lts`), `compliance.yml`, `examples.yml` |
-| macOS (`macos-latest`, ARM64) | arm64 | 20 only (22 pending) | Supported (`sandbox-exec`, deprecated by Apple; RFC 0004) | Supported (process-group sampling) | `ci.yml` (build-and-test), `compliance.yml`, `examples.yml` |
-| Windows Server 2025 (`windows-latest`) | x64 | 20 only (22 pending) | Unsupported (RFC 0004) | Best-effort (PowerShell CIM process-tree polling) | `ci.yml` (build-and-test), `compliance.yml`, `examples.yml` |
+| macOS (`macos-latest`, ARM64) | arm64 | 20 and 22 | Supported (`sandbox-exec`, deprecated by Apple; RFC 0004) | Supported (process-group sampling) | `ci.yml` (build-and-test + `node-lts`), `compliance.yml`, `examples.yml` |
+| Windows Server 2025 (`windows-latest`) | x64 | 20 and 22 | Unsupported (RFC 0004) | Best-effort (PowerShell CIM process-tree polling) | `ci.yml` (build-and-test + `node-lts`), `compliance.yml`, `examples.yml` |
 
 Claimable guarantees at v1.0.0:
 
-- Node.js 20 is verified on Ubuntu 24.04 x64, macOS ARM64, and Windows Server
-  2025. Node.js 22 is verified on Ubuntu only; the `node-lts` CI job must expand
-  to macOS and Windows before the matrix claims Node 22 there.
+- Node.js 20 and 22 are verified on Ubuntu 24.04 x64, macOS ARM64, and Windows
+  Server 2025 via the `ci.yml` `node-lts` job (Node 20 also runs the full
+  build-and-test, compliance, examples, and repro gates on all three OSes).
 - Windows CPU/memory enforcement is best-effort (a detached child can escape
   accounting); Linux/macOS cover pipelines, background jobs, and chained
   `sh -c` children. The hard core quota (`cpuQuota`) remains experimental and
