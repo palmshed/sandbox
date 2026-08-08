@@ -6,7 +6,7 @@ Every process execution inside Palmshed Sandbox returns structured metadata:
 {
   "id": "exec_9a8b7c6d",
   "backend": "native",
-  "specVersion": "0.1.0",
+  "specVersion": "0.1.2",
   "startedAt": "2026-08-07T23:55:00.000Z",
   "finishedAt": "2026-08-07T23:55:00.042Z",
   "durationMs": 42,

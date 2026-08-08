@@ -70,7 +70,7 @@ async function main() {
   const meta = metaExec.metadata();
   assert.ok(meta, 'metadata object available after wait()');
   assert.equal(meta!.backend, 'native');
-  assert.equal(meta!.specVersion, '0.1.1');
+  assert.equal(meta!.specVersion, '0.1.2');
   assert.equal(typeof meta!.startedAt, 'string');
   assert.equal(typeof meta!.finishedAt, 'string');
   assert.ok(meta!.durationMs >= 0);

@@ -1,6 +1,6 @@
 # `@palmshed/sandbox` API Reference
 
-> Runtime specification: `0.1.1` | SDK: `0.1.0-beta.1`
+> Runtime specification: `0.1.2` | SDK: `0.1.0-beta.1`
 
 ---
 
@@ -208,7 +208,7 @@ const meta = execution.metadata();
 // {
 //   id: 'exec_abc123',
 //   backend: 'native',
-//   specVersion: '0.1.1',
+//   specVersion: '0.1.2',
 //   startedAt: '2026-08-08T00:00:00.000Z',
 //   finishedAt: '2026-08-08T00:00:01.200Z',
 //   durationMs: 1200,
