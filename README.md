@@ -66,3 +66,28 @@ await sandbox.destroy();
 ```
 
 See [AGENTS.md](AGENTS.md) for full architectural guidelines and specification rules.
+
+---
+
+## Debug Logging (`SANDBOX_LOG=debug`)
+
+Set `SANDBOX_LOG=debug` to emit lifecycle and resource-enforcement events to
+stderr (off by default):
+
+```bash
+SANDBOX_LOG=debug node your-app.mjs
+```
+
+Emitted events (consistent across the native and Docker backends):
+
+| Event                | Meaning                                                        |
+| -------------------- | -------------------------------------------------------------- |
+| `backend.init`       | Backend initialized (capability flags + configured limits)     |
+| `exec.start`         | Execution started (backend, pid where available, limits)       |
+| `exec.end`           | Execution finished (exit code, duration, timeout flag, CPU ms) |
+| `resource.enforced`  | A resource limit was enforced (cpu / memory / disk)            |
+| `backend.destroy`    | Backend torn down                                              |
+
+Log lines contain identifiers and resource configuration **only** — never
+secrets, environment values, command contents, or filesystem contents. See
+[`docs/errors.md`](docs/errors.md) for the error-code reference.

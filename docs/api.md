@@ -333,6 +333,16 @@ After a CPU-limit kill the sandbox remains usable; a workload may run again imme
 
 ---
 
+## Errors & Recovery
+
+Every thrown failure is a `SandboxError` (or `SandboxResourceError`) with a
+structured `code`; non-thrown terminal outcomes surface as execution statuses
+(`timedout`, `failed`, `cancelled`). For the meaning, typical cause, recovery
+behavior, and sandbox-reuse expectations of each code, see
+[`errors.md`](./errors.md).
+
+---
+
 ## Known Limitations (`v0.1.0-beta.1`)
 
 * `cancel()` sends `SIGTERM` to the process group (then `SIGKILL` after 1s).
