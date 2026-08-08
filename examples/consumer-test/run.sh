@@ -10,18 +10,30 @@ set -euo pipefail
 # Usage: ./run.sh
 #
 # This simulates an external consumer installing @palmshed/sandbox from npm.
+# The packed artifact version is resolved dynamically from the SDK, so version
+# bumps never break the consumer fixture.
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SDK_DIR="$ROOT/sdk/typescript"
 CONSUMER_DIR="$ROOT/examples/consumer-test"
+PKG_JSON="$CONSUMER_DIR/package.json"
 
 echo "=== 1. Building TypeScript SDK ==="
 (cd "$SDK_DIR" && npm run build)
 
 echo "=== 2. Packing SDK artifact ==="
-(cd "$SDK_DIR" && npm pack)
+TGZ="$(cd "$SDK_DIR" && npm pack --silent | tail -1)"
+TGZ_ABS="$SDK_DIR/$TGZ"
+echo "Packed artifact: $TGZ"
 
 echo "=== 3. Installing packed artifact into consumer project ==="
+# Point the consumer dependency at the freshly packed artifact (dynamic version).
+node -e "
+  const fs = require('fs');
+  const pkg = JSON.parse(fs.readFileSync('$PKG_JSON', 'utf-8'));
+  pkg.dependencies['@palmshed/sandbox'] = 'file:${TGZ_ABS}';
+  fs.writeFileSync('$PKG_JSON', JSON.stringify(pkg, null, 2) + '\n');
+"
 (cd "$CONSUMER_DIR" && rm -rf node_modules package-lock.json && npm install)
 
 echo "=== 4. Running consumer test ==="

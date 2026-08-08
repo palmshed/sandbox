@@ -6,7 +6,7 @@
     "test": "tsc && node dist/verify.js"
   },
   "dependencies": {
-    "@palmshed/sandbox": "file:../../sdk/typescript/palmshed-sandbox-0.1.0-beta.1.tgz"
+    "@palmshed/sandbox": "file:../../sdk/typescript/palmshed-sandbox-0.0.0.tgz"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

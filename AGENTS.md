@@ -120,10 +120,10 @@ gh api -X PATCH gists/e2a499783be6d2b9de4dd7cf4f34ee7d --input <payload>.json
 ## Build & Conformance Commands
 
 - **Build TypeScript Reference SDK**: `cd sdk/typescript && npm run build`
-- **TypeScript Unit & Integration Tests**: `cd sdk/typescript && npm test`
+- **TypeScript Unit, Integration & Stress Tests**: `cd sdk/typescript && npm test`
 - **Run Conformance Suite & TCK**: `node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js`
 - **Run Consumer Integration Test**: `examples/consumer-test/run.sh`
-- **Run Repro Laboratory**: `node repro/run.js`
+- **Run Repro Laboratory**: `node repro/run.js` (network repros auto-skip when `networkIsolation` is unavailable on the host; use `--all-network` to force them)
 
 ---
 

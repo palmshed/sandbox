@@ -5,11 +5,13 @@ on:
     branches: [ main, master ]
     paths:
       - 'sdk/typescript/src/**'
+      - 'sdk/typescript/package.json'
       - 'examples/consumer-test/**'
   pull_request:
     branches: [ main, master ]
     paths:
       - 'sdk/typescript/src/**'
+      - 'sdk/typescript/package.json'
       - 'examples/consumer-test/**'
 
 jobs:
@@ -23,17 +25,44 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install SDK dependencies
-        run: cd sdk/typescript && npm ci
+      # Reproducible: build + pack + install-from-tarball + verify.
+      # The packed artifact version is resolved dynamically by run.sh, so
+      # version bumps never break this fixture.
+      - name: Run isolated consumer integration test (tarball)
+        run: bash examples/consumer-test/run.sh
 
-      - name: Build SDK
-        run: cd sdk/typescript && npm run build
+  # Phase 1: verify installation directly from the npm registry (not a local
+  # tarball). This checks that the published package is installable and that
+  # the public API surface works for an external consumer.
+  registry-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Pack SDK artifact
-        run: cd sdk/typescript && npm pack
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Install consumer test dependencies
-        run: cd examples/consumer-test && rm -rf node_modules package-lock.json && npm install
+      - name: Install @palmshed/sandbox from npm registry (beta tag)
+        run: |
+          mkdir -p /tmp/registry-consumer && cd /tmp/registry-consumer
+          npm init -y > /dev/null
+          npm install @palmshed/sandbox@beta --no-audit --no-fund
 
-      - name: Run consumer test
-        run: cd examples/consumer-test && npm test
+      - name: Verify registry package exports and execution
+        run: |
+          cd /tmp/registry-consumer
+          node -e "
+            const { Sandbox } = require('@palmshed/sandbox');
+            (async () => {
+              const s = await Sandbox.create({ backend: 'native', timeout: 5000 });
+              const e = await s.exec('echo registry-ok');
+              await e.wait();
+              if (e.exitCode !== 0 || !/registry-ok/.test(e.stdout())) {
+                throw new Error('registry package execution failed');
+              }
+              console.log('registry install OK, version=' + require('@palmshed/sandbox/package.json').version);
+              await s.destroy();
+            })().catch((err) => { console.error(err); process.exit(1); });
+          "

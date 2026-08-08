@@ -8,7 +8,12 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    name: build-and-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -23,8 +28,15 @@ jobs:
       - name: Build TypeScript Reference SDK
         run: cd sdk/typescript && npm run build
 
-      - name: Run SDK Unit Tests
+      - name: Run SDK Unit & Stress Tests
         run: cd sdk/typescript && npm test
 
       - name: Run Compliance Suite & TCK
         run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js
+
+      # Repro laboratory: network repros auto-skip when networkIsolation is
+      # unavailable on the host (Windows, or Linux CI where unprivileged user
+      # namespaces are restricted). On macOS they assert full RFC 0004 isolation.
+      - name: Run Repro Laboratory
+        shell: bash
+        run: node repro/run.js
