@@ -114,14 +114,14 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 - [x] **AI Agent Runner (`examples/ai-agent-runner.mjs`)**
   - Workflow: `User Request → Agent → Sandbox → Execute Code → Return Output`
-  - Validates: Python/Node.js execution, dependency isolation, timeout handling, stdout/stderr streaming
+  - Validates: Node.js code execution, sandbox isolation (network disabled), timeout handling, stdout/stderr streaming
 - [x] **Code Evaluation System (`examples/code-evaluator.mjs`)**
   - Workflow: `Submission → Sandbox → Run Tests → Collect Results`
-  - Validates: Multi-test execution, failed programs, infinite loops, resource limit breaches
+  - Validates: Multi-test execution, failed programs, infinite loops, timeout enforcement
 - [x] **Build / Test Environment (`examples/ci-runner.mjs`)**
   - Workflow: `Repository → Sandbox FS → npm test → Logs + Artifacts`
-  - Validates: Workspace mounting, build execution, artifact extraction
-  - All three examples run in CI via `examples.yml` (freshness checks on Ubuntu + macOS)
+  - Validates: Workspace mounting (uploadFile), build + test execution, artifact extraction (readFile/downloadFile), failure and timeout handling, sandbox reuse after failed/timed-out workloads
+  - All three examples run in CI via `examples.yml` (freshness checks on Ubuntu, macOS, and Windows)
 
 ---
 
