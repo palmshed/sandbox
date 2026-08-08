@@ -1,6 +1,7 @@
 {
   "name": "@palmshed/sandbox",
   "version": "0.1.0",
+  "type": "module",
   "description": "General-purpose, language-agnostic sandbox runtime with pluggable execution backends",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

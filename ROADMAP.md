@@ -48,9 +48,9 @@ Before marking security and resource enforcement capabilities complete, the proj
 - [x] Basic execution & real-time stdout/stderr streaming
 - [x] Virtual filesystem operations & initial TCK/compliance suite
 - [x] Maintain `examples/consumer-test` as a permanent downstream consumer verification project
-- [ ] Verify npm package installation directly from tarball (`.tgz`) and npm registry
+- [x] Verify npm package installation directly from tarball (`.tgz`) and npm registry (`examples/consumer-test/run.sh` + `registry-install` CI job)
 - [x] Comprehensive usage documentation (creation, command execution, filesystem, streaming, destruction)
-- [ ] Document version compatibility rules and keep examples updated with every API change
+- [x] Document version compatibility rules and keep examples updated with every API change (`examples.yml` freshness CI runs all three examples; `spec/compatibility.md` + `deprecations.md`)
 
 **Success Criteria**: A new engineer can clone the repo and run a sandbox example in minutes.
 
@@ -116,9 +116,10 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 - [x] **Code Evaluation System (`examples/code-evaluator.js`)**
   - Workflow: `Submission → Sandbox → Run Tests → Collect Results`
   - Validates: Multi-test execution, failed programs, infinite loops, resource limit breaches
-- [ ] **Build / Test Environment (`examples/ci-runner`)**
-  - Workflow: `Repository → Sandbox FS → npm test / cargo test → Logs + Artifacts`
+- [x] **Build / Test Environment (`examples/ci-runner.js`)**
+  - Workflow: `Repository → Sandbox FS → npm test → Logs + Artifacts`
   - Validates: Workspace mounting, build execution, artifact extraction
+  - All three examples run in CI via `examples.yml` (freshness checks on Ubuntu + macOS)
 
 ---
 

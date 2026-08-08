@@ -1,0 +1,43 @@
+name: Examples
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'examples/**'
+      - 'sdk/typescript/src/**'
+      - 'sdk/typescript/package.json'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'examples/**'
+      - 'sdk/typescript/src/**'
+      - 'sdk/typescript/package.json'
+
+jobs:
+  examples:
+    name: examples (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build SDK
+        run: cd sdk/typescript && npm ci && npm run build
+
+      - name: Run AI Agent Runner example
+        run: node examples/ai-agent-runner.js
+
+      - name: Run Code Evaluator example
+        run: node examples/code-evaluator.js
+
+      - name: Run CI Runner example
+        run: node examples/ci-runner.js
