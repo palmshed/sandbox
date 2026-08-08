@@ -1,6 +1,6 @@
 # `@palmshed/sandbox` API Reference
 
-> Runtime specification: `0.1.1` | SDK: `0.1.0-alpha.3`
+> Runtime specification: `0.1.1` | SDK: `0.1.0-beta.1`
 
 ---
 
@@ -13,7 +13,7 @@ npm install @palmshed/sandbox
 Or from a local tarball:
 
 ```bash
-npm install ./palmshed-sandbox-0.1.0-alpha.3.tgz
+npm install ./palmshed-sandbox-0.1.0-beta.1.tgz
 ```
 
 ---
@@ -218,9 +218,19 @@ const meta = execution.metadata();
 // }
 ```
 
+### `execution.result()`
+
+Returns the full `ExecResult` payload after `wait()` resolves. `null` while running. Contains `id`, `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `cpuTimeMs?`, and `metadata`.
+
+```ts
+const result = execution.result();
+console.log(result?.stdout);   // accumulated stdout string
+console.log(result?.exitCode); // 0
+```
+
 ### `execution.cancel()`
 
-Cancels the execution. Currently transitions status to `cancelled`. Process-level signal (`SIGTERM`/`SIGKILL`) is pending.
+Cancels the execution by sending `SIGTERM` to the process group, then `SIGKILL` after 1s if the process is still running. Transitions status to `cancelled` and emits the `cancelled` event.
 
 ```ts
 await execution.cancel();
@@ -323,9 +333,9 @@ After a CPU-limit kill the sandbox remains usable; a workload may run again imme
 
 ---
 
-## Known Limitations (`v0.1.0-alpha.3`)
+## Known Limitations (`v0.1.0-beta.1`)
 
-* `execution.cancel()` transitions state only — does not yet send `SIGTERM`/`SIGKILL`.
+* `cancel()` sends `SIGTERM` to the process group (then `SIGKILL` after 1s).
 * CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is experimental and not enforced.
 * CPU and memory enforcement on Windows is best-effort (WMIC polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
 * Filesystem isolation (chroot, mount restrictions) is not yet active.
