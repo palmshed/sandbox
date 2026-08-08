@@ -1,0 +1,8 @@
+{
+  "entryPoints": ["src/index.ts"],
+  "out": "typedoc",
+  "name": "@palmshed/sandbox",
+  "includeVersion": true,
+  "excludeInternal": true,
+  "excludePrivate": true
+}

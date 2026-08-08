@@ -23,3 +23,24 @@ jobs:
           test -f rfcs/README.md
           test -f examples/README.md
           test -f .github/workflows/README.md
+          test -f docs/api.md
+          test -f docs/errors.md
+
+  generate-api-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'sdk/typescript/package-lock.json'
+      - name: Install SDK Dependencies
+        run: cd sdk/typescript && npm ci
+      - name: Generate API Reference Docs (Typedoc)
+        # Fails the build if the public API can no longer be documented
+        # (broken exports, unresolved TSDoc), so the reference cannot drift
+        # silently. Output is gitignored (sdk/typescript/typedoc/).
+        run: cd sdk/typescript && npm run docs
+      - name: Verify Generated Output
+        run: test -f sdk/typescript/typedoc/index.html
