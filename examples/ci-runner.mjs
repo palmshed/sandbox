@@ -1,5 +1,5 @@
 /**
- * examples/ci-runner.js
+ * examples/ci-runner.mjs
  *
  * Simulates a CI build/test environment: a repository is uploaded into a
  * sandbox filesystem, a build/test command runs inside the sandbox, and
@@ -13,7 +13,7 @@
  *   - Artifact extraction (downloadFile)
  *   - Sandbox cleanup
  *
- * Usage: node examples/ci-runner.js
+ * Usage: node examples/ci-runner.mjs
  *
  * The fixture project is created on the host, uploaded into the sandbox, then
  * `npm test` is run inside. This mirrors a CI pipeline: checkout -> install ->

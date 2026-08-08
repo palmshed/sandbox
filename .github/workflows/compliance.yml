@@ -26,4 +26,5 @@ jobs:
         run: cd sdk/typescript && npm ci && npm run build
 
       - name: Verify Specification & Compliance Contract
+        shell: bash
         run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js

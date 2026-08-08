@@ -1,5 +1,5 @@
 /**
- * examples/ai-agent-runner.js
+ * examples/ai-agent-runner.mjs
  *
  * Simulates an AI agent that receives a user request, generates code,
  * executes it inside a sandbox, and streams output back.

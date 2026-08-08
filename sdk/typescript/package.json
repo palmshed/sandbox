@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "tsc && node --test dist/test/*.test.js"
+    "test": "tsc && node --test dist/test/sandbox.test.js dist/test/stress.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

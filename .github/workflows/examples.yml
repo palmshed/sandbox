@@ -34,10 +34,10 @@ jobs:
         run: cd sdk/typescript && npm ci && npm run build
 
       - name: Run AI Agent Runner example
-        run: node examples/ai-agent-runner.js
+        run: node examples/ai-agent-runner.mjs
 
       - name: Run Code Evaluator example
-        run: node examples/code-evaluator.js
+        run: node examples/code-evaluator.mjs
 
       - name: Run CI Runner example
-        run: node examples/ci-runner.js
+        run: node examples/ci-runner.mjs

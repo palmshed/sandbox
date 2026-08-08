@@ -32,6 +32,7 @@ jobs:
         run: cd sdk/typescript && npm test
 
       - name: Run Compliance Suite & TCK
+        shell: bash
         run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js
 
       # Repro laboratory: network repros auto-skip when networkIsolation is

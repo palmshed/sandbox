@@ -1,5 +1,5 @@
 /**
- * examples/code-evaluator.js
+ * examples/code-evaluator.mjs
  *
  * Simulates a code evaluation system: takes multiple submissions,
  * runs each in a fresh sandbox, collects pass/fail results.
