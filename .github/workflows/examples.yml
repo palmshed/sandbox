@@ -33,6 +33,21 @@ jobs:
       - name: Build SDK
         run: cd sdk/typescript && npm ci && npm run build
 
+      # The examples import the '@palmshed/sandbox' package name, so they must
+      # run against the packed release artifact, not the workspace build. npm
+      # install copies the tarball into the repo-root node_modules (a real
+      # install, not a symlink), so resolution matches an external consumer.
+      - name: Pack and install SDK artifact
+        shell: bash
+        run: |
+          cd sdk/typescript
+          PACKFILE=$(npm pack --silent | tail -n 1)
+          cd ..
+          npm install --no-save --no-audit --no-fund --omit=dev "./sdk/typescript/$PACKFILE"
+
+      - name: Run Quickstart example
+        run: node examples/quickstart.mjs
+
       - name: Run AI Agent Runner example
         run: node examples/ai-agent-runner.mjs
 

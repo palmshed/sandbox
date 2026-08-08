@@ -12,7 +12,7 @@
  *   - Sandbox cleanup
  */
 
-import { Sandbox } from '../sdk/typescript/dist/index.js';
+import { Sandbox } from '@palmshed/sandbox';
 
 // Simulated agent-generated code snippets (untrusted input)
 const agentTasks = [

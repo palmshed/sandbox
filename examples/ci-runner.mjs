@@ -21,7 +21,7 @@
  *
  * Usage: node examples/ci-runner.mjs
  */
-import { Sandbox } from '../sdk/typescript/dist/index.js';
+import { Sandbox } from '@palmshed/sandbox';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';

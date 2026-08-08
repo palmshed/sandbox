@@ -50,7 +50,7 @@ Before marking security and resource enforcement capabilities complete, the proj
 - [x] Maintain `examples/consumer-test` as a permanent downstream consumer verification project
 - [x] Verify npm package installation directly from tarball (`.tgz`) and npm registry (`examples/consumer-test/run.sh` + `registry-install` CI job)
 - [x] Comprehensive usage documentation (creation, command execution, filesystem, streaming, destruction)
-- [x] Document version compatibility rules and keep examples updated with every API change (`examples.yml` freshness CI runs all three examples; `spec/compatibility.md` + `deprecations.md`)
+- [x] Document version compatibility rules and keep examples updated with every API change (`examples.yml` freshness CI runs all four examples against the packed artifact; `spec/compatibility.md` + `deprecations.md`)
 
 **Success Criteria**: A new engineer can clone the repo and run a sandbox example in minutes.
 
@@ -121,7 +121,7 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 - [x] **Build / Test Environment (`examples/ci-runner.mjs`)**
   - Workflow: `Repository → Sandbox FS → npm test → Logs + Artifacts`
   - Validates: Workspace mounting (uploadFile), build + test execution, artifact extraction (readFile/downloadFile), failure and timeout handling, sandbox reuse after failed/timed-out workloads
-  - All three examples run in CI via `examples.yml` (freshness checks on Ubuntu, macOS, and Windows)
+  - All four examples run in CI via `examples.yml`, which installs the packed `@palmshed/sandbox` tarball (never the workspace build) and runs them on Ubuntu, macOS, and Windows
 
 ---
 
@@ -191,9 +191,9 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 - [ ] Semantic versioning guarantees and complete CHANGELOG
 - [ ] **Migration & Compatibility Policy**:
   - [x] Strict 6-month deprecation window for non-breaking schema field transitions (written into `spec/deprecations.md`; binding at v1.0.0)
-  - [x] Explicit supported Node.js runtime matrix (LTS versions: `engines >=20` in `sdk/typescript/package.json`, covered by the `ci.yml` `node-lts` job on Node 20 + 22)
-  - [ ] Native backend driver compatibility matrix across Linux distributions / macOS
-- [ ] All examples verified against release tarball in CI
+  - [x] Explicit supported Node.js runtime matrix (LTS versions: `engines >=20` in `sdk/typescript/package.json`; `ci.yml` `node-lts` job verifies Node 20 on Ubuntu/macOS/Windows and Node 22 on Ubuntu, with macOS/Windows Node 22 coverage pending)
+  - [x] Native backend driver compatibility matrix across Linux distributions / macOS (documented in `docs/release-readiness.md` with per-platform verified/best-effort status)
+- [x] All examples verified against release tarball in CI (`examples.yml` packs the SDK, installs the tarball into the repo-root `node_modules`, then runs all four examples on Ubuntu, macOS, and Windows)
 - [ ] Package published to npm registry with zero-dependency core engine (packaging prepared: `files` allowlist ships `dist/` + `LICENSE` + `README.md`, `sdk/typescript/README.md` added, `engines` declared; final publish happens at v1.0.0)
 
 ---

@@ -12,7 +12,7 @@
  *   - Result collection
  */
 
-import { Sandbox } from '../sdk/typescript/dist/index.js';
+import { Sandbox } from '@palmshed/sandbox';
 
 const submissions = [
   {

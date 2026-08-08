@@ -8,4 +8,13 @@ This directory contains standalone usage scripts demonstrating Palmshed Sandbox 
 - `ci-runner.mjs`: Simulates a CI build/test environment: uploads a workspace into the sandbox filesystem, runs `npm run build` and `npm test` with streamed output, collects artifacts via `downloadFile`, then exercises a failing workload and a timed-out workload to prove sandbox reuse after both.
 - `consumer-test/`: Isolated integration test that verifies the public API against a packed `@palmshed/sandbox` tarball (not workspace source). Run with `consumer-test/run.sh`.
 
-All examples (except `quickstart.mjs`, which requires the installed package) are exercised automatically in CI via `.github/workflows/examples.yml` on Ubuntu, macOS, and Windows.
+All examples import the `@palmshed/sandbox` package name and resolve it from `node_modules`, exactly like an external consumer. To run them locally, build the SDK, pack it, and install the tarball into the repo root:
+
+```sh
+cd sdk/typescript && npm ci && npm run build
+PACKFILE=$(npm pack --silent | tail -n 1)
+cd .. && npm install --no-save --omit=dev "./sdk/typescript/$PACKFILE"
+node examples/quickstart.mjs
+```
+
+In CI, `.github/workflows/examples.yml` performs this pack-and-install step (against the packed artifact, never the workspace `dist/`) and then runs all four examples on Ubuntu, macOS, and Windows (Node 20).
