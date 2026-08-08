@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { NativeBackend } from '../../sdk/typescript/dist/backends/native.js';
 
 /**
- * Spec-Version: 0.1.0
+ * Spec-Version: 0.1.2
  */
-test('TCK: Execution Module [Spec-Version: 0.1.0]', async (t) => {
+test('TCK: Execution Module [Spec-Version: 0.1.2]', async (t) => {
   const engine = new NativeBackend();
-  await engine.init({});
+  await engine.init({ env: { EXPLICIT_VAR: 'injected' } });
 
   t.after(async () => {
     await engine.destroy();
@@ -17,5 +17,15 @@ test('TCK: Execution Module [Spec-Version: 0.1.0]', async (t) => {
     const res = await engine.exec('echo "TCK Exec"');
     assert.equal(res.exitCode, 0);
     assert.match(res.stdout, /TCK Exec/);
+  });
+
+  await t.test('Environment contract: host env not inherited wholesale, explicit env injected [v0.1.2]', async () => {
+    process.env.HOST_LEAK_VAR = 'should-not-leak';
+    const res = await engine.exec(
+      'node -e "console.log(process.env.HOST_LEAK_VAR||\'absent\', process.env.EXPLICIT_VAR||\'absent\', process.env.PATH?\'path\':\'nopath\')"'
+    );
+    assert.equal(res.exitCode, 0);
+    assert.match(res.stdout, /absent injected path/);
+    delete process.env.HOST_LEAK_VAR;
   });
 });
