@@ -18,9 +18,9 @@ are described in `docs/api.md`.
 | `ERR_CPU_EXCEEDED`      | Resource error  | A workload consumed more CPU time than `cpuTimeLimit`                | Yes (`recoverable: true`) |
 | `ERR_OOM_EXCEEDED`      | Resource error  | A workload's memory exceeded the configured limit                    | Yes (`recoverable: true`) |
 | `ERR_DISK_QUOTA_EXCEEDED` | Resource error | The workspace grew past `diskQuota`                                  | Yes (`recoverable: true`, workspace rolled back) |
-| `EXEC_FAILED`           | SandboxError    | A process could not be spawned, or the backend lost its container    | Usually — probe first |
+| `EXEC_FAILED`           | SandboxError    | A process could not be spawned, or the backend lost its container    | Usually: probe first |
 | `FS_ERROR`              | SandboxError    | A filesystem operation was refused or failed                          | Yes, unless the sandbox FS is corrupt |
-| `INVALID_BACKEND`       | SandboxError    | Backend creation/startup failed or the backend name is unknown        | No sandbox exists yet — retry creation |
+| `INVALID_BACKEND`       | SandboxError    | Backend creation/startup failed or the backend name is unknown        | No sandbox exists yet; retry creation |
 | `TIMEOUT`               | *declared, not thrown* | Reserved. Wall-clock timeouts surface as the `timedout` status instead | Yes |
 | `OOM`                   | *legacy*        | Replaced by `ERR_OOM_EXCEEDED`                                        | Yes |
 | `UNKNOWN`               | *reserved*      | Not currently emitted by any backend                                   | n/a |
@@ -46,7 +46,7 @@ are described in `docs/api.md`.
 - **Meaning**: The sandbox workspace usage grew past the configured `diskQuota`.
 - **Typical cause**: A workload writing files (`dd`, `fallocate`, shell redirections, downloads) past the quota, possibly faster than the 250 ms enforcement poll interval.
 - **Recovery behavior**: The process group is force-killed and the native backend **rolls back files created during the failing execution**, returning the workspace under quota. The error carries `resource: 'disk'`, `limit`, `observed`, and `recoverable: true`.
-- **Sandbox reuse expected**: **Yes** — the rollback is specifically designed to keep the sandbox reusable despite having no delete API.
+- **Sandbox reuse expected**: **Yes**; the rollback is specifically designed to keep the sandbox reusable despite having no delete API.
 
 > **Backend coverage**: `ERR_CPU_EXCEEDED`, `ERR_OOM_EXCEEDED`, and
 > `ERR_DISK_QUOTA_EXCEEDED` are currently enforced by the **native** backend only.
@@ -70,7 +70,7 @@ are described in `docs/api.md`.
   - Symlink escape attempts (native backend resolves symlinks to enforce containment).
   - NUL bytes in a path (Docker).
   - Underlying I/O failures inside the container (Docker `cat`/`cp` errors).
-- **Recovery behavior**: The refused operation is a no-op — nothing was written outside the sandbox. Retry with a contained path.
+- **Recovery behavior**: The refused operation is a no-op; nothing was written outside the sandbox. Retry with a contained path.
 - **Sandbox reuse expected**: **Yes**, unless the failure was an I/O error inside the container that left its filesystem in an unexpected state.
 
 ## `INVALID_BACKEND` (SandboxError)
@@ -81,7 +81,7 @@ are described in `docs/api.md`.
   - Docker daemon unreachable, image missing, or the container failed to start (`docker run` non-zero exit).
   - The Docker CLI itself could not be spawned.
 - **Recovery behavior**: Adjust the backend name/config or fix the Docker setup, then retry `Sandbox.create`. No sandbox instance is returned on failure.
-- **Sandbox reuse expected**: n/a — there is no sandbox to reuse.
+- **Sandbox reuse expected**: n/a; there is no sandbox to reuse.
 
 ---
 
@@ -131,6 +131,6 @@ stderr (off by default):
 SANDBOX_LOG=debug node your-app.mjs
 ```
 
-Logs contain identifiers and resource configuration only — never secrets,
+Logs contain identifiers and resource configuration only: never secrets,
 environment values, command contents, or filesystem contents. See the
 `SANDBOX_LOG=debug` section in the README for the emitted event schema.

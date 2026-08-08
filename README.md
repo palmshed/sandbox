@@ -31,8 +31,8 @@
 
 1. **Runtime Specification (`spec/`)**: JSON Schemas & versioning ([`spec/version.md`](spec/version.md)).
 2. **Compliance Suite (`compliance/`)**: Cross-language conformance test suite.
-3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript)), Rust, Go, Python.
-4. **Backends (`backends/`)**: Native process driver, Docker container driver, Firecracker, WASI.
+3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript)); Rust, Go, and Python SDKs are planned.
+4. **Backends (`backends/`)**: Native process driver, Docker container driver; Firecracker and WASI are planned.
 
 ---
 
@@ -88,6 +88,6 @@ Emitted events (consistent across the native and Docker backends):
 | `resource.enforced`  | A resource limit was enforced (cpu / memory / disk)            |
 | `backend.destroy`    | Backend torn down                                              |
 
-Log lines contain identifiers and resource configuration **only** — never
+Log lines contain identifiers and resource configuration **only**: never
 secrets, environment values, command contents, or filesystem contents. See
 [`docs/errors.md`](docs/errors.md) for the error-code reference.

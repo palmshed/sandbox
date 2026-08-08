@@ -93,7 +93,7 @@ async function assertReusable(sandbox, afterWhat) {
 }
 
 /**
- * Scenario 1 — Green pipeline: build + test + collect artifacts.
+ * Scenario 1: Green pipeline: build + test + collect artifacts.
  * Uses uploadFile (host -> sandbox VFS) like a CI checkout.
  */
 async function scenarioGreenPipeline(sandbox, fixtureDir) {
@@ -131,7 +131,7 @@ async function scenarioGreenPipeline(sandbox, fixtureDir) {
 }
 
 /**
- * Scenario 2 — Failing workload: a project whose test exits non-zero.
+ * Scenario 2: Failing workload: a project whose test exits non-zero.
  * Uses writeFile (VFS) to stage the project under a workDir, like an
  * agent-generated patch. The sandbox must report the failure and stay usable.
  */
@@ -162,7 +162,7 @@ async function scenarioFailingBuild(sandbox) {
 }
 
 /**
- * Scenario 3 — Timed-out workload: an execution that exceeds its timeout.
+ * Scenario 3: Timed-out workload: an execution that exceeds its timeout.
  * The sandbox must surface `timedout` and remain usable.
  */
 async function scenarioTimeout(sandbox) {

@@ -1,4 +1,4 @@
-# `repro/` — Reproducible Guarantee Laboratory
+# `repro/`: Reproducible Guarantee Laboratory
 
 Small, standalone scripts that reproduce a guarantee, a bug, or a regression in
 one command. Each script is a minimal, self-contained artifact that answers:

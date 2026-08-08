@@ -29,9 +29,9 @@ import { Sandbox } from '@palmshed/sandbox';
 
 const sandbox = await Sandbox.create({
   backend:  'native',      // 'native' | 'docker'. Default: 'native'
-  timeout:  10000,         // ms — default execution timeout
+  timeout:  10000,         // ms: default execution timeout
   cpu:      1,             // CPU units (backend-dependent; quota not enforced by native)
-  cpuTimeLimit: 2000,      // ms — CPU time budget enforced across the process group
+  cpuTimeLimit: 2000,      // ms: CPU time budget enforced across the process group
   memory:   '256MB',       // memory bound (backend-dependent)
   network:  'disabled',    // 'disabled' | 'allow' | 'proxy'
 });
@@ -70,7 +70,7 @@ Returns the active backend name (`'native'` | `'docker'`).
 
 ### `sandbox.exec(command, options?)`
 
-Executes a shell command. Returns an `Execution` handle immediately — the process is already running.
+Executes a shell command. Returns an `Execution` handle immediately; the process is already running.
 
 ```ts
 const execution = await sandbox.exec('node -e "console.log(42)"');
@@ -82,7 +82,7 @@ Options:
 ```ts
 {
   timeout?: number;   // override sandbox-level timeout for this execution
-  cpuTimeLimit?: number; // ms — CPU time budget for this execution (overrides sandbox-level)
+  cpuTimeLimit?: number; // ms: CPU time budget for this execution (overrides sandbox-level)
   memory?: string | number; // memory bound override (e.g. '256MB')
   stdout?:  Writable; // pipe stdout directly to a stream
   stderr?:  Writable; // pipe stderr directly to a stream

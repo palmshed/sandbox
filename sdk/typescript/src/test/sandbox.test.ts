@@ -290,7 +290,7 @@ test('Native Backend Sandbox Execution', async (t) => {
   });
 
   await t.test('resource enforcement: memory limit normal execution completes', async () => {
-    // Allocate a sandbox with a generous 256MB limit — a simple echo should fit easily
+    // Allocate a sandbox with a generous 256MB limit; a simple echo should fit easily
     const memSandbox = await Sandbox.create({ backend: 'native', memory: '256MB' });
 
     const execution = await memSandbox.exec('echo "memory check"');
@@ -325,7 +325,7 @@ test('Native Backend Sandbox Execution', async (t) => {
 
     await assert.rejects(
       async () => {
-        // 1MB limit — should be breached within the first few allocations
+        // 1MB limit: should be breached within the first few allocations
         await memSandbox.exec(`node -e "${allocScript}"`, {
           memory: '1MB',
           timeout: 5000,

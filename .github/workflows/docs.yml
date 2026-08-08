@@ -7,6 +7,16 @@ on:
     branches: [ main, master ]
 
 jobs:
+  punctuation-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Hard-fails on Unicode em dashes in prose; warns on prose "--".
+      # Technical syntax (code fences, inline code, --- rules, table
+      # separators, CLI flags, POSIX --) is preserved.
+      - name: Documentation punctuation check
+        run: node scripts/punctuation-check.mjs
+
   validate-docs:
     runs-on: ubuntu-latest
     steps:

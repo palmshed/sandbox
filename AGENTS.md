@@ -47,6 +47,7 @@ sandbox/
 │   ├── go/                # Phase 3 Go SDK
 │   └── python/            # Phase 3 Python SDK (AI agent frameworks)
 ├── scripts/
+│   ├── punctuation-check.mjs  # CI: hard-fail on Unicode em dash in prose; warn-only on prose --
 │   └── probes/            # Capability probes (network isolation measurement)
 ├── compliance/            # Cross-SDK & Backend conformance test suites
 │   ├── sdk/               # SDK behavior verification
@@ -89,9 +90,9 @@ Every execution backend reports supported features dynamically via `capabilities
 `networkIsolation` is probed at `init()` time:
 - **Linux**: `true` if `unshare --user --map-root-user` succeeds (unprivileged user namespaces available); `false` on CI runners where user namespaces are restricted (falls back to proxy env vars)
 - **macOS**: `true` (uses `sandbox-exec` with Seatbelt profile, note: deprecated by Apple; documented limitation in RFC 0004)
-- **Windows**: `false` — no native unprivileged network isolation exists (documented in RFC 0004); `init()` flips the flag to `false` and network tests/repros skip on Windows
+- **Windows**: `false`; no native unprivileged network isolation exists (documented in RFC 0004); `init()` flips the flag to `false` and network tests/repros skip on Windows
 
-The **Docker backend** reports only capabilities backed by implementation and integration tests: `filesystem: true`, `streaming: true`, and `remoteExecution: false`. `cpuLimits`, `memoryLimits`, and `networkIsolation` are `false` — the driver wires `docker run/exec/cp/stop` CLI calls, but CPU time-budget enforcement, per-execution memory overrides, and network policies beyond `disabled` are not implemented or integration-tested (backend-parity work item `#4`). Do not mark these `true` without implementation and test coverage.
+The **Docker backend** reports only capabilities backed by implementation and integration tests: `filesystem: true`, `streaming: true`, and `remoteExecution: false`. `cpuLimits`, `memoryLimits`, and `networkIsolation` are `false`; the driver wires `docker run/exec/cp/stop` CLI calls, but CPU time-budget enforcement, per-execution memory overrides, and network policies beyond `disabled` are not implemented or integration-tested (backend-parity work item `#4`). Do not mark these `true` without implementation and test coverage.
 
 This allows SDKs to adapt gracefully without embedding backend-specific conditional logic.
 
@@ -103,7 +104,7 @@ The central project engineering log lives at:
 
 **https://gist.github.com/bniladridas/e2a499783be6d2b9de4dd7cf4f34ee7d** (`building-palmshed-sandbox.md`)
 
-It records validation state, verified capabilities, benchmark profiles, and a cumulative revision history. Every capability transition (`false` → `true`) or completed issue sub-task MUST be reflected there in the same work session — including the commit(s), negative/recovery test results, and any platform limitations.
+It records validation state, verified capabilities, benchmark profiles, and a cumulative revision history. Every capability transition (`false` → `true`) or completed issue sub-task MUST be reflected there in the same work session (including the commit(s), negative/recovery test results, and any platform limitations).
 
 Update it via the GitHub API (avoids the interactive editor):
 
@@ -134,4 +135,5 @@ gh api -X PATCH gists/e2a499783be6d2b9de4dd7cf4f34ee7d --input <payload>.json
 - **Specification First**: Any modification to data structures or execution behavior MUST start with an update to `spec/` schemas and `spec/version.md`.
 - **Capability Negotiation Principle**: Prefer adding capabilities over changing existing behavior. A capability flag MUST NOT be marked `true` unless it is backed by verified native implementation, documented failure states, and integration test coverage. Feature availability must be queried via `sandbox.capabilities` or `backend.capabilities`.
 - **Agent Neutrality**: Sandbox engines know nothing about LLM prompts or agent frameworks. AI tools (e.g. `mull`, `kit`, `predicate`) consume the SDK.
+- **Prose Punctuation**: Use proper punctuation in prose (`:` for explanation, `,` for a pause, `;` for related clauses, `()` for an aside, `.` for a separate thought). Do not use the Unicode em dash (`—`) or prose `--` in prose. Preserve technical `--` (CLI flags, POSIX `--` separators) and Markdown `---` (rules, table separators) exactly as-is. Enforced by `scripts/punctuation-check.mjs` in CI (`docs.yml`); the living gist follows the same convention.
 - **AGENTS.md Maintenance**: Whenever folder structures, specification schemas, or SDK layouts are modified, this `AGENTS.md` file MUST be updated in the exact same commit.
