@@ -1,0 +1,8 @@
+# Default code owner for the repository.
+# NOTE: the owner must have write access to the repository for the rule to take effect.
+* @bniladridas
+
+# Area-specific ownership can be added later as the team grows, e.g.:
+# /spec/        @bniladridas
+# /rfcs/        @bniladridas
+# /sdk/typescript/ @bniladridas
