@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Changed
+- Deprecation policy (`deprecations.md`): the one-minor-version-cycle window is replaced with a strict **6-month** window, measured in calendar time from the deprecation announcement release. The 6-month window becomes a binding guarantee at specification v1.0.0; see `docs/release-readiness.md` for the freeze plan.
+
+---
+
 ## [0.1.2] - 2026-08-08
 
 ### Added

@@ -185,15 +185,16 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 ## Phase 8 - Release Readiness & Migration Policy (1.0.0)
 
 > **Goal**: Ready for widespread external production adoption.
+> **Plan**: The freeze criteria and mechanics are tracked in `docs/release-readiness.md`. The spec is not frozen yet.
 
 - [ ] Stable, frozen public API schema (`spec/v1.0.0`)
 - [ ] Semantic versioning guarantees and complete CHANGELOG
 - [ ] **Migration & Compatibility Policy**:
-  - Strict 6-month deprecation window for non-breaking schema field transitions
-  - Explicit supported Node.js runtime matrix (LTS versions)
-  - Native backend driver compatibility matrix across Linux distributions / macOS
+  - [x] Strict 6-month deprecation window for non-breaking schema field transitions (written into `spec/deprecations.md`; binding at v1.0.0)
+  - [x] Explicit supported Node.js runtime matrix (LTS versions: `engines >=20` in `sdk/typescript/package.json`, covered by the `ci.yml` `node-lts` job on Node 20 + 22)
+  - [ ] Native backend driver compatibility matrix across Linux distributions / macOS
 - [ ] All examples verified against release tarball in CI
-- [ ] Package published to npm registry with zero-dependency core engine
+- [ ] Package published to npm registry with zero-dependency core engine (packaging prepared: `files` allowlist ships `dist/` + `LICENSE` + `README.md`, `sdk/typescript/README.md` added, `engines` declared; final publish happens at v1.0.0)
 
 ---
 

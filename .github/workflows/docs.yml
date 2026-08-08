@@ -35,6 +35,8 @@ jobs:
           test -f .github/workflows/README.md
           test -f docs/api.md
           test -f docs/errors.md
+          test -f docs/release-readiness.md
+          test -f sdk/typescript/README.md
 
   generate-api-docs:
     runs-on: ubuntu-latest

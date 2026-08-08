@@ -41,3 +41,35 @@ jobs:
       - name: Run Repro Laboratory
         shell: bash
         run: node repro/run.js
+
+  # Supported Node.js runtime matrix (LTS versions). The package declares
+  # "engines": { "node": ">=20" }; 20 (Iron) and 22 (Jod) are the maintained
+  # LTS lines. The 3-OS matrix above runs on the primary line (20); this job
+  # validates the engine contract across all supported LTS lines on Linux.
+  node-lts:
+    name: node-lts (${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+          cache-dependency-path: 'sdk/typescript/package-lock.json'
+
+      - name: Install SDK Dependencies
+        run: cd sdk/typescript && npm ci
+
+      - name: Build TypeScript Reference SDK
+        run: cd sdk/typescript && npm run build
+
+      - name: Run SDK Unit & Stress Tests
+        run: cd sdk/typescript && npm test
+
+      - name: Run Compliance Suite & TCK
+        shell: bash
+        run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js

@@ -5,6 +5,15 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "dist/",
+    "!dist/test/",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
