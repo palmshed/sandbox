@@ -125,16 +125,22 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 ---
 
-## Phase 4 - Security & Isolation Hardening
+## Phase 4 - Security & Isolation Hardening (Completed for v1.0 scope)
 
 > **Goal**: Make untrusted execution verifiably safe against adversarial workloads.
 
-- [ ] **CPU Hardening**: Infinite loops, runaway processes, strict timeout enforcement (CPU time budget enforced; hard core quota pending)
-- [ ] **Memory Hardening**: Large allocations, OOM handling, cleanup after process kill
-- [ ] **Filesystem Hardening**: Strict disk limits, permission boundaries, temporary storage cleanup
-- [ ] **Process Hardening**: Recursive child process cleanup, signal handling, forced termination
+> **Status**: Complete for the **v1.0 scope** (2026-08-08). The v1.0 guarantee is *soft process isolation with a hardened virtual filesystem boundary*; host-filesystem isolation is explicitly **not** part of the v1.0 guarantee. The residual hardening items are deferred **post-v1.0** (RFC 0003, `SECURITY.md`):
+> - **OS-level filesystem isolation** for the Native backend (chroot / mount namespaces / Seatbelt FS rules): post-v1.0 (issue `#3`)
+> - **Windows network isolation**: unsupported (RFC 0004; no unprivileged mechanism)
+> - **Docker resource/network enforcement**: deferred, capability flags remain `false` (issue `#4`)
+> - **Hard `cpuQuota`**: experimental, not enforced by the Native backend (kept for future hard-quota design)
 
-**Success Criteria**: A malicious or broken workload cannot escape or degrade the host environment.
+- [x] **CPU Hardening**: Infinite loops, runaway processes, strict timeout enforcement (CPU time budget enforced; hard core quota deferred post-v1.0)
+- [x] **Memory Hardening**: Large allocations, OOM handling, cleanup after process kill
+- [x] **Filesystem Hardening**: VFS boundary v0.1.2 (traversal / absolute-path / symlink-escape rejection, `workDir` containment, exec-path disk quota with rollback); OS-level isolation deferred post-v1.0
+- [x] **Process Hardening**: Recursive child process cleanup, signal handling, forced termination
+
+**Success Criteria**: A malicious or broken workload cannot escape or degrade the host environment (within the documented v1.0 boundary).
 
 ---
 
@@ -157,6 +163,7 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 - [x] **Concurrency Testing**: 10 concurrent sandboxes + 8 parallel executions in a single sandbox (stress suite, `sdk/typescript/src/test/stress.test.ts`)
 - [x] **Lifecycle Stress Testing**: 50 rapid create → destroy cycles and destroy-while-in-flight (`stress.test.ts`); separate crash/destroy coverage in lifecycle test suite
 - [ ] **Crash Recovery**: Graceful cleanup upon host process crash or unexpected backend disconnection
+- [ ] **Longer Concurrent Execution Testing**: extend the stress suite beyond the current 10-sandbox / 8-execution bounds; the one-off 10-concurrent-sandbox `echo` timeout observed on `windows-latest` (2026-08-08, commit `d760757`, not reproduced on re-run) is treated as a **reliability signal** to monitor here rather than reopened resource-enforcement work
 - [x] **Multi-Platform CI Matrix**: Automated CI verification on Ubuntu, macOS, and Windows (`ci.yml` + `compliance.yml` matrices, commit `ebd32be`)
 - [x] **Reproducible Guarantee Lab in CI**: `node repro/run.js` runs in the CI matrix with capability-aware network skip
 
