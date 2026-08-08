@@ -40,9 +40,7 @@ jobs:
       - name: Pack and install SDK artifact
         shell: bash
         run: |
-          cd sdk/typescript
-          PACKFILE=$(npm pack --silent | tail -n 1)
-          cd ..
+          PACKFILE=$(cd sdk/typescript && npm pack --silent | tail -n 1)
           npm install --no-save --no-audit --no-fund --omit=dev "./sdk/typescript/$PACKFILE"
 
       - name: Run Quickstart example
