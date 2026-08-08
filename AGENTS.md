@@ -91,6 +91,8 @@ Every execution backend reports supported features dynamically via `capabilities
 - **macOS**: `true` (uses `sandbox-exec` with Seatbelt profile, note: deprecated by Apple; documented limitation in RFC 0004)
 - **Windows**: `false` — no native unprivileged network isolation exists (documented in RFC 0004); `init()` flips the flag to `false` and network tests/repros skip on Windows
 
+The **Docker backend** reports only capabilities backed by implementation and integration tests: `filesystem: true`, `streaming: true`, and `remoteExecution: false`. `cpuLimits`, `memoryLimits`, and `networkIsolation` are `false` — the driver wires `docker run/exec/cp/stop` CLI calls, but CPU time-budget enforcement, per-execution memory overrides, and network policies beyond `disabled` are not implemented or integration-tested (backend-parity work item `#4`). Do not mark these `true` without implementation and test coverage.
+
 This allows SDKs to adapt gracefully without embedding backend-specific conditional logic.
 
 ---

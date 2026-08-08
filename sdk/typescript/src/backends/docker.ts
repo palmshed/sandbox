@@ -5,11 +5,18 @@ import { ExecOptions, ExecResult, SandboxError, SandboxOptions } from '../core/t
 
 export class DockerBackend implements BackendEngine {
   public readonly name = 'docker';
+  // Capability negotiation principle: a capability MUST NOT be `true` unless
+  // backed by implementation AND integration-test coverage. The Docker driver
+  // wires CLI calls for run/exec/cp/stop, but cpuTimeLimit is not enforced,
+  // per-execution memory overrides are ignored, and network policies beyond
+  // `disabled` are unhandled. cpuLimits/memoryLimits/networkIsolation are
+  // therefore reported `false` (reserved: backend-parity work item #4) until
+  // Docker resource/network enforcement is implemented and integration-tested.
   public readonly capabilities = {
     filesystem: true,
-    networkIsolation: true,
-    cpuLimits: true,
-    memoryLimits: true,
+    networkIsolation: false,
+    cpuLimits: false,
+    memoryLimits: false,
     streaming: true,
     remoteExecution: false,
   };

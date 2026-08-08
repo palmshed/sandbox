@@ -56,11 +56,11 @@ Before marking security and resource enforcement capabilities complete, the proj
 
 ---
 
-## Phase 2 - Runtime Trust & Boundary Enforcement (Completed, Closeout Audit Pending)
+## Phase 2 - Runtime Trust & Boundary Enforcement (Completed)
 
 > **Goal**: Turn capability flags into verified runtime guarantees ("This sandbox enforces the boundaries it documents").
 > **Rule**: Capabilities change from `false` → `true` only when backed by integration tests.
-> **Status**: All items below are implemented and locally verified (31/31 SDK tests, 19/19 conformance/TCK, 15/15 repros on macOS). The closeout audit is gated on multi-platform CI verification (see Phase 6). The `cpuQuota` and Docker-network scope decisions (2026-08-08) were resolved by explicit classification rather than implementation.
+> **Status**: All items below are implemented, locally verified, and CI-verified across the Ubuntu/macOS/Windows matrix (31/31 SDK tests, 19/19 conformance/TCK, 15/15 repros on macOS; Windows network/POSIX repros auto-skip where the capability is unavailable). Closeout audit completed 2026-08-08. The `cpuQuota` and Docker-network scope decisions (2026-08-08) were resolved by explicit classification rather than implementation; Docker's unverified capability flags were demoted to `false` in the same session (see §3).
 
 ### 1. Process Lifecycle & Signal Handling (#2) [COMPLETED]
 - [x] POSIX process tree discovery (group PIDs & sub-shell descendants)
@@ -92,6 +92,7 @@ Before marking security and resource enforcement capabilities complete, the proj
   - Localhost service access blocking (commit `9b9c3f1`)
   - Child process isolation inheritance (commit `780f385`)
 - [x] **Scope decision (2026-08-08):** the Docker backend `--network none` leak-check suite is **explicitly out of scope for Phase 2**. Phase 2's network guarantee is scoped to the **Native backend** (`unshare`/`sandbox-exec`). Docker-backend network isolation is tracked as a separate backend-parity work item (`#4`) outside the Phase 2 closeout.
+- [x] **Scope decision (2026-08-08):** the Docker backend's unverified capability flags are **demoted to `false`**. `docker.ts` reported `cpuLimits: true`, `memoryLimits: true`, and `networkIsolation: true` without implementation or integration-test coverage, violating the capability-promotion rule. They now report `false` (Docker keeps `filesystem: true` and `streaming: true`), enforced by an explicit capability-matrix compliance test (`compliance/backends/docker.test.js`). Docker CPU/memory enforcement and network isolation are future work (`#4`) and must land implementation **and** integration tests before their flags return to `true`.
 
 ### Acceptance Criteria for Capability Promotion (`false` → `true`)
 - Implementation exists in the native backend engine

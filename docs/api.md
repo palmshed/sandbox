@@ -339,6 +339,6 @@ After a CPU-limit kill the sandbox remains usable; a workload may run again imme
 * CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is experimental and not enforced.
 * CPU and memory enforcement on Windows is best-effort (PowerShell `Get-CimInstance` process-tree polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
 * Filesystem isolation (chroot, mount restrictions) is not yet active.
-* Docker backend is present but not at full feature parity with Native.
+* Docker backend is available but only claims `filesystem` and `streaming`. Its `cpuLimits`, `memoryLimits`, and `networkIsolation` capabilities are reported `false`: the driver wires `docker run/exec/cp/stop` CLI calls, but CPU time-budget enforcement, per-execution memory overrides, and network policies beyond `disabled` are not implemented or integration-tested (work item `#4`). Verify `sandbox.capabilities` before relying on Docker resource/network guarantees.
 
 These are tracked in the [`v0.1.0` milestone](https://github.com/palmshed/sandbox/milestone/1).
