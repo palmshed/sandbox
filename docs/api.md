@@ -59,10 +59,10 @@ const caps = sandbox.capabilities;
 |----------|-----|--------|
 | Linux    | Supported (process-group sampling) | Supported (process-group sampling) |
 | macOS    | Supported (process-group sampling) | Supported (process-group sampling) |
-| Windows  | Best-effort (WMIC process-tree polling) | Best-effort (WMIC process-tree polling) |
+| Windows  | Best-effort (PowerShell CIM process-tree polling) | Best-effort (PowerShell CIM process-tree polling) |
 | Other    | Unsupported (falls back to timeout) | Unsupported (falls back to timeout) |
 
-On Windows a child that detaches from the process tree can escape accounting; Linux/macOS cover pipelines, background jobs, and chained `sh -c` children. The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
+On Windows a child that detaches from the process tree can escape accounting; Linux/macOS cover pipelines, background jobs, and chained `sh -c` children. The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend. Windows sampling uses `Get-CimInstance Win32_Process` (the replacement for the removed WMIC utility) and is verified in CI on `windows-latest`.
 
 ### `sandbox.backendName`
 
@@ -337,7 +337,7 @@ After a CPU-limit kill the sandbox remains usable; a workload may run again imme
 
 * `cancel()` sends `SIGTERM` to the process group (then `SIGKILL` after 1s).
 * CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is experimental and not enforced.
-* CPU and memory enforcement on Windows is best-effort (WMIC polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
+* CPU and memory enforcement on Windows is best-effort (PowerShell `Get-CimInstance` process-tree polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
 * Filesystem isolation (chroot, mount restrictions) is not yet active.
 * Docker backend is present but not at full feature parity with Native.
 
