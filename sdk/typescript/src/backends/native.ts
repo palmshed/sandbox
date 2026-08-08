@@ -6,6 +6,48 @@ import * as os from 'os';
 import { BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError } from '../core/types.js';
 
+/**
+ * Read the current Windows process table via PowerShell CIM (the replacement
+ * for the removed WMIC utility). Returns a map of pid -> { ppid, value }
+ * where `value` is either WorkingSetSize (memory, bytes) or the summed
+ * KernelModeTime + UserModeTime (CPU, 100ns units), depending on `fields`.
+ * Returns null if the snapshot cannot be obtained.
+ */
+function readWindowsProcessTable(
+  fields: string,
+  isCpu: boolean
+): Map<number, { ppid: number; value: number }> | null {
+  const procs = new Map<number, { ppid: number; value: number }>();
+  const script = `Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,${fields} | ConvertTo-Json -Compress`;
+  let out: string;
+  try {
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    out = execSync(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString();
+  } catch {
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(out.trim());
+  } catch {
+    return null;
+  }
+  const rows = Array.isArray(data) ? data : [data];
+  for (const row of rows as Record<string, unknown>[]) {
+    if (!row || typeof row !== 'object') continue;
+    const pid = parseInt(String(row.ProcessId), 10);
+    const ppid = parseInt(String(row.ParentProcessId), 10);
+    if (isNaN(pid)) continue;
+    const value = isCpu
+      ? (parseInt(String(row.KernelModeTime), 10) || 0) + (parseInt(String(row.UserModeTime), 10) || 0)
+      : parseInt(String(row.WorkingSetSize), 10) || 0;
+    procs.set(pid, { ppid: isNaN(ppid) ? 0 : ppid, value });
+  }
+  return procs;
+}
+
 export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
   public readonly capabilities = {
@@ -150,40 +192,12 @@ export class NativeBackend implements BackendEngine {
           if (lines.length === 0) return -1;
           return lines.reduce((sum, l) => sum + (parseInt(l, 10) || 0), 0) * 1024;
         } else if (platform === 'win32') {
-          // Windows: WMIC process-tree walk from the root PID. This is polling
-          // based rather than Job Object accounting, so a child that detaches
-          // from the tree can escape accounting. Documented platform limitation.
-          let out: string;
-          try {
-            out = execSync(
-              'wmic process get ProcessId,ParentProcessId,WorkingSetSize /value',
-              { stdio: ['ignore', 'pipe', 'ignore'] }
-            ).toString();
-          } catch {
-            return -1;
-          }
-          const procs = new Map<number, { ppid: number; rss: number }>();
-          let curPid = 0;
-          let curPpid = 0;
-          let curRss = 0;
-          for (const line of out.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed) {
-              if (curPid) procs.set(curPid, { ppid: curPpid, rss: curRss });
-              curPid = 0;
-              curPpid = 0;
-              curRss = 0;
-              continue;
-            }
-            const eq = trimmed.indexOf('=');
-            if (eq === -1) continue;
-            const key = trimmed.slice(0, eq);
-            const val = parseInt(trimmed.slice(eq + 1), 10) || 0;
-            if (key === 'ProcessId') curPid = val;
-            else if (key === 'ParentProcessId') curPpid = val;
-            else if (key === 'WorkingSetSize') curRss = val;
-          }
-          if (curPid) procs.set(curPid, { ppid: curPpid, rss: curRss });
+          // Windows: PowerShell CIM process-tree walk from the root PID (WMIC
+          // is removed from Windows 11 24H2+/Server 2025). Polling based rather
+          // than Job Object accounting, so a child that detaches from the tree
+          // can escape accounting. Documented platform limitation.
+          const procs = readWindowsProcessTable('WorkingSetSize', false);
+          if (!procs) return -1;
           // BFS from the root PID summing RSS across the process tree
           let total = 0;
           const visited = new Set<number>();
@@ -194,7 +208,7 @@ export class NativeBackend implements BackendEngine {
             visited.add(current);
             const p = procs.get(current);
             if (!p) continue;
-            total += p.rss;
+            total += p.value;
             for (const [childPid, child] of procs) {
               if (child.ppid === current && !visited.has(childPid)) queue.push(childPid);
             }
@@ -264,39 +278,11 @@ export class NativeBackend implements BackendEngine {
           }
           return total;
         } else if (platform === 'win32') {
-          // Windows: WMIC process-tree walk of KernelModeTime + UserModeTime
-          // (100-nanosecond units => /10000 = ms).
-          let out: string;
-          try {
-            out = execSync(
-              'wmic process get ProcessId,ParentProcessId,KernelModeTime,UserModeTime /value',
-              { stdio: ['ignore', 'pipe', 'ignore'] }
-            ).toString();
-          } catch {
-            return -1;
-          }
-          const procs = new Map<number, { ppid: number; cpu: number }>();
-          let curPid = 0;
-          let curPpid = 0;
-          let curCpu = 0;
-          for (const line of out.split('\n')) {
-            const trimmed = line.trim();
-            if (!trimmed) {
-              if (curPid) procs.set(curPid, { ppid: curPpid, cpu: curCpu });
-              curPid = 0;
-              curPpid = 0;
-              curCpu = 0;
-              continue;
-            }
-            const eq = trimmed.indexOf('=');
-            if (eq === -1) continue;
-            const key = trimmed.slice(0, eq);
-            const val = parseInt(trimmed.slice(eq + 1), 10) || 0;
-            if (key === 'ProcessId') curPid = val;
-            else if (key === 'ParentProcessId') curPpid = val;
-            else if (key === 'KernelModeTime' || key === 'UserModeTime') curCpu += val;
-          }
-          if (curPid) procs.set(curPid, { ppid: curPpid, cpu: curCpu });
+          // Windows: PowerShell CIM process-tree walk of KernelModeTime +
+          // UserModeTime (100-nanosecond units => /10000 = ms). WMIC is removed
+          // from Windows 11 24H2+/Server 2025.
+          const procs = readWindowsProcessTable('KernelModeTime,UserModeTime', true);
+          if (!procs) return -1;
           let total = 0;
           const visited = new Set<number>();
           const queue = [rootPid];
@@ -306,7 +292,7 @@ export class NativeBackend implements BackendEngine {
             visited.add(current);
             const p = procs.get(current);
             if (!p) continue;
-            total += p.cpu;
+            total += p.value;
             for (const [childPid, child] of procs) {
               if (child.ppid === current && !visited.has(childPid)) queue.push(childPid);
             }

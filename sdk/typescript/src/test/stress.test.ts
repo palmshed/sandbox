@@ -31,7 +31,8 @@ test('stress: 10 concurrent sandboxes execute independently', async (t) => {
   for (const r of results) {
     assert.equal(r.status, 'completed', `sandbox ${r.i} completed`);
     assert.equal(r.exitCode, 0, `sandbox ${r.i} exit code 0`);
-    assert.equal(r.out.trim(), `box-${r.i}-${r.i + 1}`, `sandbox ${r.i} output correct`);
+    // cmd.exe echoes the surrounding quotes, so match the payload tolerantly.
+    assert.match(r.out, new RegExp(`box-${r.i}-${r.i + 1}`), `sandbox ${r.i} output correct`);
   }
 });
 
