@@ -59,6 +59,8 @@ export class NativeBackend implements BackendEngine {
     remoteExecution: false,
   };
   private sandboxDir: string = '';
+  /** realpath of sandboxDir, used as the containment base for VFS resolution */
+  private sandboxRealDir: string = '';
   private options!: SandboxOptions;
   /** Active child processes -- killed on destroy() */
   private activeProcesses = new Set<ChildProcess>();
@@ -70,10 +72,10 @@ export class NativeBackend implements BackendEngine {
     // Create an isolated temporary working directory for native execution
     const tmpPrefix = path.join(os.tmpdir(), 'palmshed-sandbox-');
     this.sandboxDir = await fs.mkdtemp(tmpPrefix);
+    this.sandboxRealDir = await fs.realpath(this.sandboxDir);
 
     if (options.workDir) {
-      const targetDir = path.resolve(this.sandboxDir, options.workDir);
-      await fs.mkdir(targetDir, { recursive: true });
+      await this.resolveWorkDir(options.workDir);
     }
 
     // Probe: on Linux, verify unprivileged user-namespace network isolation
@@ -104,8 +106,8 @@ export class NativeBackend implements BackendEngine {
     const startTime = Date.now();
     const timeout = options.timeout ?? this.options.timeout ?? 0;
     const cwd = options.workDir
-      ? path.resolve(this.sandboxDir, options.workDir)
-      : this.sandboxDir;
+      ? await this.resolveWorkDir(options.workDir)
+      : this.sandboxRealDir;
 
     const env = {
       ...process.env,
@@ -581,12 +583,53 @@ export class NativeBackend implements BackendEngine {
     });
   }
 
-  private resolveSandboxPath(targetPath: string): string {
+  /**
+   * Resolve a VFS path to an absolute path inside the sandbox workspace,
+   * enforcing containment:
+   *  1. Lexical check: `path.relative` from the workspace root must not escape
+   *     it (rejects `..` traversal, absolute host paths, and cross-drive paths).
+   *  2. Symlink check: the deepest existing ancestor is `realpath`-resolved and
+   *     must also lie under the (realpath of the) workspace root. This prevents
+   *     a workload-planted symlink from redirecting VFS operations outside the
+   *     sandbox. Nonexistent suffix components are appended back unchanged.
+   * Returns the realpath-normalized absolute path. Throws FS_ERROR on escape.
+   */
+  private async resolveSandboxPath(targetPath: string): Promise<string> {
     const resolved = path.resolve(this.sandboxDir, targetPath);
-    if (!resolved.startsWith(this.sandboxDir)) {
+    const rel = path.relative(this.sandboxDir, resolved);
+    if (rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) {
       throw new SandboxError('Path traversal attempt outside sandbox root', 'FS_ERROR');
     }
-    return resolved;
+
+    let current = resolved;
+    const suffix: string[] = [];
+    for (;;) {
+      let real: string;
+      try {
+        real = await fs.realpath(current);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+        const parent = path.dirname(current);
+        if (parent === current) {
+          throw new SandboxError(`Path outside sandbox root: ${targetPath}`, 'FS_ERROR');
+        }
+        suffix.unshift(path.basename(current));
+        current = parent;
+        continue;
+      }
+      const realRel = path.relative(this.sandboxRealDir, path.join(real, ...suffix));
+      if (realRel === '..' || realRel.startsWith(`..${path.sep}`) || path.isAbsolute(realRel)) {
+        throw new SandboxError('Symlink escape outside sandbox root', 'FS_ERROR');
+      }
+      return path.join(real, ...suffix);
+    }
+  }
+
+  /** Resolve an exec workDir inside the workspace, creating it if absent. */
+  private async resolveWorkDir(workDir: string): Promise<string> {
+    const target = await this.resolveSandboxPath(workDir);
+    await fs.mkdir(target, { recursive: true });
+    return target;
   }
 
   private async getDirectorySize(dirPath: string): Promise<number> {
@@ -748,12 +791,12 @@ export class NativeBackend implements BackendEngine {
   }
 
   async readFile(filePath: string): Promise<Buffer> {
-    const target = this.resolveSandboxPath(filePath);
+    const target = await this.resolveSandboxPath(filePath);
     return await fs.readFile(target);
   }
 
   async writeFile(filePath: string, content: Buffer | string): Promise<void> {
-    const target = this.resolveSandboxPath(filePath);
+    const target = await this.resolveSandboxPath(filePath);
     const contentBytes = Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content, 'utf-8');
     await this.assertDiskQuotaAvailable(contentBytes);
     await fs.mkdir(path.dirname(target), { recursive: true });
@@ -761,7 +804,7 @@ export class NativeBackend implements BackendEngine {
   }
 
   async uploadFile(localPath: string, sandboxPath: string): Promise<void> {
-    const target = this.resolveSandboxPath(sandboxPath);
+    const target = await this.resolveSandboxPath(sandboxPath);
     const stat = await fs.stat(localPath);
     await this.assertDiskQuotaAvailable(stat.size);
     await fs.mkdir(path.dirname(target), { recursive: true });
@@ -769,7 +812,7 @@ export class NativeBackend implements BackendEngine {
   }
 
   async downloadFile(sandboxPath: string, localPath: string): Promise<void> {
-    const source = this.resolveSandboxPath(sandboxPath);
+    const source = await this.resolveSandboxPath(sandboxPath);
     await fs.mkdir(path.dirname(localPath), { recursive: true });
     await fs.copyFile(source, localPath);
   }
