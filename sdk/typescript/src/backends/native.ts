@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError } from '../core/types.js';
+import { logDebug } from '../core/log.js';
 
 /**
  * Read the current Windows process table via PowerShell CIM (the replacement
@@ -122,6 +123,15 @@ export class NativeBackend implements BackendEngine {
       this.networkIsolationAvailable = false;
       this.capabilities.networkIsolation = false;
     }
+
+    logDebug('backend.init', {
+      backend: this.name,
+      networkIsolation: this.capabilities.networkIsolation,
+      timeout: options.timeout ?? null,
+      memory: options.memory ?? null,
+      cpuTimeLimit: options.cpuTimeLimit ?? null,
+      diskQuota: options.diskQuota ?? null,
+    });
   }
 
   async exec(command: string, options: ExecOptions = {}): Promise<ExecResult> {
@@ -416,6 +426,14 @@ export class NativeBackend implements BackendEngine {
       });
 
       this.activeProcesses.add(child);
+      logDebug('exec.start', {
+        backend: this.name,
+        pid: child.pid ?? null,
+        timeout: timeout || null,
+        cpuTimeLimit: cpuTimeLimitMs ?? null,
+        memory: memLimitBytes ?? null,
+        network: this.options.network ?? 'allow',
+      });
 
       /**
        * Kill the process gracefully: SIGTERM first, then SIGKILL after 1s if
@@ -598,6 +616,12 @@ export class NativeBackend implements BackendEngine {
 
         if (oomKilled && memLimitBytes !== null) {
           // Capture final RSS best-effort (process is gone, use limit as observed)
+          logDebug('resource.enforced', {
+            backend: this.name,
+            resource: 'memory',
+            limit: rawMemoryLimit,
+            recoverable: true,
+          });
           reject(new SandboxResourceError(
             `Memory limit exceeded: process RSS exceeded limit of ${rawMemoryLimit}`,
             'ERR_OOM_EXCEEDED',
@@ -612,6 +636,12 @@ export class NativeBackend implements BackendEngine {
         }
 
         if (cpuExceeded && cpuTimeLimitMs !== null) {
+          logDebug('resource.enforced', {
+            backend: this.name,
+            resource: 'cpu',
+            limit: rawCpuTimeLimit,
+            recoverable: true,
+          });
           reject(new SandboxResourceError(
             `CPU time limit exceeded: process group consumed more than ${rawCpuTimeLimit}ms of CPU time`,
             'ERR_CPU_EXCEEDED',
@@ -629,6 +659,12 @@ export class NativeBackend implements BackendEngine {
           // Roll back files created during this execution so the workspace
           // returns under quota and the sandbox stays reusable.
           await this.rollbackWorkspace(preExecFiles);
+          logDebug('resource.enforced', {
+            backend: this.name,
+            resource: 'disk',
+            limit: this.options.diskQuota,
+            recoverable: true,
+          });
           reject(new SandboxResourceError(
             `Disk quota exceeded: sandbox workspace usage exceeded limit of ${this.options.diskQuota}`,
             'ERR_DISK_QUOTA_EXCEEDED',
@@ -653,6 +689,14 @@ export class NativeBackend implements BackendEngine {
           timedOut,
           cpuTimeMs: finalCpuTimeMs,
         };
+
+        logDebug('exec.end', {
+          backend: this.name,
+          exitCode,
+          durationMs,
+          timedOut,
+          cpuTimeMs: finalCpuTimeMs ?? null,
+        });
 
         resolve({
           id: execId,
@@ -958,5 +1002,6 @@ export class NativeBackend implements BackendEngine {
     if (this.sandboxDir) {
       await fs.rm(this.sandboxDir, { recursive: true, force: true });
     }
+    logDebug('backend.destroy', { backend: this.name });
   }
 }

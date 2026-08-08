@@ -3,6 +3,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions } from '../core/types.js';
+import { logDebug } from '../core/log.js';
 
 export class DockerBackend implements BackendEngine {
   public readonly name = 'docker';
@@ -85,12 +86,23 @@ export class DockerBackend implements BackendEngine {
       throw new SandboxError(`Failed to start Docker container: ${result.stderr}`, 'INVALID_BACKEND');
     }
     this.containerId = result.stdout.trim();
+    logDebug('backend.init', {
+      backend: this.name,
+      containerId: this.containerId,
+      image,
+      network: options.network ?? 'allow',
+    });
   }
 
   async exec(command: string, options: ExecOptions = {}): Promise<ExecResult> {
     if (!this.containerId) {
       throw new SandboxError('Docker container is not running', 'EXEC_FAILED');
     }
+
+    logDebug('exec.start', {
+      backend: this.name,
+      timeout: options.timeout ?? this.options?.timeout ?? null,
+    });
 
     const args = ['exec'];
 
@@ -152,6 +164,7 @@ export class DockerBackend implements BackendEngine {
       await this.runDockerCmd(['stop', '-t', '1', this.containerId]);
       this.containerId = '';
     }
+    logDebug('backend.destroy', { backend: this.name });
   }
 
   private runDockerCmd(args: string[], options: ExecOptions = {}): Promise<ExecResult> {
@@ -202,6 +215,13 @@ export class DockerBackend implements BackendEngine {
         const durationMs = finishedAtMs - startTime;
         const execId = `exec_${Math.random().toString(36).substring(2, 10)}`;
         const exitCode = timedOut ? -1 : (code ?? 0);
+
+        logDebug('exec.end', {
+          backend: this.name,
+          exitCode,
+          durationMs,
+          timedOut,
+        });
 
         const metadata = {
           id: execId,
