@@ -384,6 +384,11 @@ export class NativeBackend implements BackendEngine {
         stdio: ['pipe', 'pipe', 'pipe'],
         // Use a process group so we can kill descendants too (non-Windows)
         detached: !isWin,
+        // On Windows, pass arguments verbatim so cmd.exe sees '/s /c <command>'
+        // as separate tokens. Without this, Node quotes the space-containing
+        // '/s /c' argument, cmd.exe fails to parse the /c switch, and every
+        // command exits 1.
+        windowsVerbatimArguments: isWin,
       });
 
       this.activeProcesses.add(child);
