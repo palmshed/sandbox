@@ -67,6 +67,28 @@ export class NativeBackend implements BackendEngine {
   /** Whether Linux unshare --user network namespace creation succeeded at init */
   private networkIsolationAvailable = true;
 
+  /**
+   * Environment contract: executions do NOT inherit the host environment
+   * wholesale. Only this minimal allowlist is carried from the host (needed to
+   * run node/npm/shells); everything else is dropped so host secrets do not
+   * leak into untrusted workloads. Explicit `env` values (sandbox-level and
+   * per-execution) override the allowlist.
+   */
+  private static readonly envAllowlist: string[] =
+    process.platform === 'win32'
+      ? ['PATH', 'SystemRoot', 'ComSpec', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'TEMP', 'TMP', 'LANG', 'LC_ALL', 'LC_CTYPE']
+      : ['PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'LC_CTYPE'];
+
+  private static buildExecutionEnv(sandboxEnv: Record<string, string> | undefined, execEnv: Record<string, string> | undefined): Record<string, string> {
+    const env: Record<string, string> = {};
+    for (const key of NativeBackend.envAllowlist) {
+      if (process.env[key] !== undefined) env[key] = process.env[key]!;
+    }
+    if (sandboxEnv) Object.assign(env, sandboxEnv);
+    if (execEnv) Object.assign(env, execEnv);
+    return env;
+  }
+
   async init(options: SandboxOptions): Promise<void> {
     this.options = options;
     // Create an isolated temporary working directory for native execution
@@ -109,11 +131,7 @@ export class NativeBackend implements BackendEngine {
       ? await this.resolveWorkDir(options.workDir)
       : this.sandboxRealDir;
 
-    const env = {
-      ...process.env,
-      ...this.options.env,
-      ...options.env,
-    };
+    const env = NativeBackend.buildExecutionEnv(this.options.env, options.env);
 
     // If network is disabled, set standard proxy/offline indicators
     if (this.options.network === 'disabled') {
