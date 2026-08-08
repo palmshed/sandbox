@@ -52,7 +52,7 @@ export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
   public readonly capabilities = {
     filesystem: true,
-    networkIsolation: true,  // Probed at init: true if unshare --user works (macOS: sandbox-exec always available); false on Linux CI where user namespaces are restricted
+    networkIsolation: true,  // Probed at init: true if unshare --user works (macOS: sandbox-exec always available); false on Linux CI where user namespaces are restricted, and false on Windows (unsupported)
     cpuLimits: true,
     memoryLimits: true,
     streaming: true,
@@ -91,6 +91,12 @@ export class NativeBackend implements BackendEngine {
         this.networkIsolationAvailable = false;
         this.capabilities.networkIsolation = false;
       }
+    } else if (process.platform === 'win32') {
+      // Windows has no native network isolation (RFC 0004 documents it as
+      // unsupported). Report the capability as unavailable so consumers and
+      // the repro suite skip network assertions instead of failing them.
+      this.networkIsolationAvailable = false;
+      this.capabilities.networkIsolation = false;
     }
   }
 

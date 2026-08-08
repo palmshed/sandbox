@@ -10,6 +10,9 @@
  * network repros are SKIPPED -- they are a measurement, not a guarantee, on
  * such hosts. Use --all-network to force-run them regardless (they will
  * likely fail where the capability is off, which is expected).
+ *
+ * Repro scripts that use POSIX-only shell syntax declare `POSIX-only` in
+ * their header comment and are skipped on Windows.
  */
 'use strict';
 
@@ -21,6 +24,7 @@ const root = __dirname;
 const verbose = process.argv.includes('--verbose');
 const forceNetwork = process.argv.includes('--all-network');
 const dirs = ['cpu', 'memory', 'process', 'disk', 'network'];
+const isWin = process.platform === 'win32';
 
 let passed = 0;
 let skipped = 0;
@@ -40,9 +44,9 @@ const networkIsolationAvailable = (() => {
       'native.js'
     ));
     const engine = new NativeBackend();
-    // init() runs the Linux unshare probe; on macOS/Windows it is a no-op for
-    // the probe and networkIsolation keeps its default. We then re-read the
-    // capability, which reflects the probe result.
+    // init() runs the Linux unshare probe and flips the capability to false
+    // on Windows (unsupported). We then re-read the capability, which
+    // reflects the probe result.
     return engine.init({}).then(() => engine.capabilities.networkIsolation);
   } catch {
     return Promise.resolve(false);
@@ -67,6 +71,13 @@ const networkIsolationAvailable = (() => {
         skipped += 1;
         skippedLabels.push(label);
         console.log(`SKIP  ${label}  (networkIsolation unavailable on this host)`);
+        continue;
+      }
+
+      if (isWin && /POSIX-only/.test(fs.readFileSync(script, 'utf-8').slice(0, 1000))) {
+        skipped += 1;
+        skippedLabels.push(label);
+        console.log(`SKIP  ${label}  (POSIX-only shell syntax)`);
         continue;
       }
 

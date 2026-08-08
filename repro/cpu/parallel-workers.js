@@ -8,6 +8,9 @@
  *
  * Expected: parallel workers killed; exit code 0.
  * Violated: workers survive, or only some are counted; exit 1.
+ *
+ * POSIX-only: uses compound sh syntax (`for ... & done; wait`) that cmd.exe
+ * cannot parse; skipped by repro/run.js on Windows.
  */
 'use strict';
 
