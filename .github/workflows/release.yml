@@ -97,17 +97,20 @@ jobs:
         run: |
           mkdir -p dist-artifacts
 
-          # 1. Compliance Report
-          cat << 'EOF' > dist-artifacts/compliance-report.md
+           # 1. Compliance Report
+           SPEC_VER=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' spec/version.md | head -n 1)
+           cat << EOF > dist-artifacts/compliance-report.md
           # Palmshed Sandbox Conformance Report
-          - Spec Version: 0.1.0
+          - Spec Version: $SPEC_VER
           - Native Engine Driver: PASSED
           - TS Reference SDK: PASSED
           EOF
 
-          # 2. TCK Report
-          cat << 'EOF' > dist-artifacts/tck-report.md
+           # 2. TCK Report
+           SPEC_VER=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' spec/version.md | head -n 1)
+           cat << EOF > dist-artifacts/tck-report.md
           # Technology Compatibility Kit (TCK) Execution Summary
+          - Spec Version: $SPEC_VER
           - Lifecycle Suite: PASSED
           - Execution Suite: PASSED
           - Filesystem Suite: PASSED
@@ -135,11 +138,12 @@ jobs:
           }
           EOF
 
-          # 5. Manifest & Artifact Checksums
-          cat << EOF > dist-artifacts/release-manifest.json
+           # 5. Manifest & Artifact Checksums
+           SPEC_VER=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' spec/version.md | head -n 1)
+           cat << EOF > dist-artifacts/release-manifest.json
           {
             "tag": "${GITHUB_REF_NAME}",
-            "specVersion": "0.1.0",
+            "specVersion": "$SPEC_VER",
             "sdkVersion": "${GITHUB_REF_NAME#v}",
             "builtAt": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           }
@@ -181,8 +185,20 @@ jobs:
     needs: create-github-release
     runs-on: ubuntu-latest
     steps:
-      - name: TypeScript SDK Distribution Gate
-        run: echo "TypeScript Reference SDK prepared for package registry publishing."
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install & Build TypeScript SDK
+        run: cd sdk/typescript && npm ci && npm run build
+
+      - name: Publish to npm
+        run: cd sdk/typescript && npm publish --access public
 
   publish-rust:
     needs: create-github-release
