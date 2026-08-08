@@ -211,6 +211,8 @@ jobs:
   publish-typescript:
     needs: create-github-release
     runs-on: ubuntu-24.04
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v5
