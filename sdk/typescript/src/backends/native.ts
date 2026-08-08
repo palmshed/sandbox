@@ -132,15 +132,27 @@ export class NativeBackend implements BackendEngine {
     const rawCpuTimeLimit = options.cpuTimeLimit ?? this.options.cpuTimeLimit;
     const cpuTimeLimitMs = rawCpuTimeLimit !== undefined && rawCpuTimeLimit > 0 ? rawCpuTimeLimit : null;
 
+    // Parse disk quota (bytes) and snapshot the workspace so files created by
+    // an over-quota execution can be rolled back on failure, keeping the
+    // sandbox reusable (recoverable: true) despite having no delete API.
+    const diskQuotaBytes = this.getDiskQuotaBytes();
+    let preExecFiles: Set<string> | null = null;
+    if (diskQuotaBytes !== null) {
+      preExecFiles = await this.listWorkspaceFiles();
+    }
+
     return new Promise((resolve, reject) => {
       let stdoutAcc = '';
       let stderrAcc = '';
       let timedOut = false;
       let oomKilled = false;
       let cpuExceeded = false;
+      let diskExceeded = false;
       let timer: NodeJS.Timeout | null = null;
       let memPoller: NodeJS.Timeout | null = null;
       let cpuPoller: NodeJS.Timeout | null = null;
+      let diskPoller: NodeJS.Timeout | null = null;
+      let measuringDisk = false;
       let settled = false;
       let finalCpuTimeMs: number | undefined;
 
@@ -484,6 +496,30 @@ export class NativeBackend implements BackendEngine {
         }, 100);
       }
 
+      // Disk-quota enforcement during execution (250ms interval). Workspace
+      // usage is polled while the workload runs, so processes that write
+      // directly (dd, fallocate, shell redirections) cannot bypass the quota
+      // configured on the sandbox. On exceed, the process group is killed and
+      // the execution rejects with ERR_DISK_QUOTA_EXCEEDED.
+      if (diskQuotaBytes !== null && child.pid !== undefined) {
+        diskPoller = setInterval(() => {
+          if (settled || measuringDisk) return;
+          measuringDisk = true;
+          this.getDirectorySize(this.sandboxRealDir)
+            .then((size) => {
+              if (!settled && size > diskQuotaBytes) {
+                diskExceeded = true;
+                clearInterval(diskPoller!);
+                killProcess('SIGKILL');
+              }
+            })
+            .catch(() => {}) // workspace may be mid-removal on destroy
+            .finally(() => {
+              measuringDisk = false;
+            });
+        }, 250);
+      }
+
       child.stdout?.on('data', (chunk: Buffer) => {
         const str = chunk.toString();
         stdoutAcc += str;
@@ -511,6 +547,7 @@ export class NativeBackend implements BackendEngine {
         if (timer) clearTimeout(timer);
         if (memPoller) clearInterval(memPoller);
         if (cpuPoller) clearInterval(cpuPoller);
+        if (diskPoller) clearInterval(diskPoller);
         // Best-effort final CPU-time sample for reporting even when no CPU
         // limit was configured (the process group has already been killed).
         if (finalCpuTimeMs === undefined && child.pid !== undefined) {
@@ -526,7 +563,20 @@ export class NativeBackend implements BackendEngine {
         const finishedAtMs = Date.now();
         const durationMs = finishedAtMs - startTime;
         const execId = `exec_${Math.random().toString(36).substring(2, 10)}`;
-        const exitCode = timedOut || oomKilled || cpuExceeded ? -1 : (code ?? 0);
+
+        // Final workspace size check: a fast workload can write past the quota
+        // and exit before the 250ms poller observes it, so the size is
+        // re-measured after the process group is gone.
+        if (!diskExceeded && diskQuotaBytes !== null) {
+          try {
+            const finalSize = await this.getDirectorySize(this.sandboxRealDir);
+            if (finalSize > diskQuotaBytes) diskExceeded = true;
+          } catch {
+            // workspace may be mid-removal on destroy
+          }
+        }
+
+        const exitCode = timedOut || oomKilled || cpuExceeded || diskExceeded ? -1 : (code ?? 0);
 
         if (oomKilled && memLimitBytes !== null) {
           // Capture final RSS best-effort (process is gone, use limit as observed)
@@ -551,6 +601,23 @@ export class NativeBackend implements BackendEngine {
               resource: 'cpu',
               limit: rawCpuTimeLimit!,
               observed: `>${rawCpuTimeLimit}`,
+              recoverable: true,
+            }
+          ));
+          return;
+        }
+
+        if (diskExceeded && diskQuotaBytes !== null) {
+          // Roll back files created during this execution so the workspace
+          // returns under quota and the sandbox stays reusable.
+          await this.rollbackWorkspace(preExecFiles);
+          reject(new SandboxResourceError(
+            `Disk quota exceeded: sandbox workspace usage exceeded limit of ${this.options.diskQuota}`,
+            'ERR_DISK_QUOTA_EXCEEDED',
+            {
+              resource: 'disk',
+              limit: this.options.diskQuota!,
+              observed: `>${this.options.diskQuota}`,
               recoverable: true,
             }
           ));
@@ -651,14 +718,58 @@ export class NativeBackend implements BackendEngine {
     return totalSize;
   }
 
-  private async assertDiskQuotaAvailable(additionalBytes: number): Promise<void> {
-    if (!this.options?.diskQuota) return;
-    const quotaBytes =
-      typeof this.options.diskQuota === 'number'
-        ? this.options.diskQuota
-        : this.parseSizeStringToBytes(this.options.diskQuota);
+  /** List regular files in the workspace as paths relative to the sandbox root. */
+  private async listWorkspaceFiles(
+    dirPath: string = this.sandboxRealDir,
+    base: string = ''
+  ): Promise<Set<string>> {
+    const files = new Set<string>();
+    let entries: import('fs').Dirent[];
+    try {
+      entries = await fs.readdir(dirPath, { withFileTypes: true });
+    } catch {
+      return files;
+    }
+    for (const entry of entries) {
+      const rel = base ? path.join(base, entry.name) : entry.name;
+      if (entry.isDirectory()) {
+        const sub = await this.listWorkspaceFiles(path.join(dirPath, entry.name), rel);
+        for (const f of sub) files.add(f);
+      } else if (entry.isFile()) {
+        files.add(rel);
+      }
+    }
+    return files;
+  }
 
-    const currentSize = await this.getDirectorySize(this.sandboxDir);
+  /** Remove workspace files that were not present at the start of an execution. */
+  private async rollbackWorkspace(preExecFiles: Set<string> | null): Promise<void> {
+    if (!preExecFiles) return;
+    const current = await this.listWorkspaceFiles();
+    for (const rel of current) {
+      if (!preExecFiles.has(rel)) {
+        try {
+          await fs.unlink(path.join(this.sandboxRealDir, rel));
+        } catch {
+          // Best-effort cleanup
+        }
+      }
+    }
+  }
+
+  /** Parsed disk quota in bytes, or null when no diskQuota is configured. */
+  private getDiskQuotaBytes(): number | null {
+    if (this.options?.diskQuota === undefined) return null;
+    return typeof this.options.diskQuota === 'number'
+      ? this.options.diskQuota
+      : this.parseSizeStringToBytes(this.options.diskQuota);
+  }
+
+  private async assertDiskQuotaAvailable(additionalBytes: number): Promise<void> {
+    const quotaBytes = this.getDiskQuotaBytes();
+    if (quotaBytes === null) return;
+
+    const currentSize = await this.getDirectorySize(this.sandboxRealDir);
     if (currentSize + additionalBytes > quotaBytes) {
       // SandboxResourceError is a direct import at the top of this file
       throw new SandboxResourceError(
@@ -666,7 +777,7 @@ export class NativeBackend implements BackendEngine {
         'ERR_DISK_QUOTA_EXCEEDED',
         {
           resource: 'disk',
-          limit: this.options.diskQuota,
+          limit: quotaBytes,
           observed: currentSize + additionalBytes,
           recoverable: true,
         }
