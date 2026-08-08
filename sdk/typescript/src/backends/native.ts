@@ -718,12 +718,23 @@ export class NativeBackend implements BackendEngine {
   private async cleanupProcessTree(rootPid: number): Promise<void> {
     if (rootPid === undefined) return;
 
-    if (process.platform !== 'win32') {
+    if (process.platform === 'win32') {
+      // Windows has no process groups. taskkill /T /F removes the whole tree
+      // rooted at rootPid. Without this, the root process survives destroy()
+      // and any piped stdio keeps the parent alive forever.
       try {
-        process.kill(-rootPid, 'SIGKILL');
+        const { execSync } = require('child_process');
+        execSync(`taskkill /pid ${rootPid} /T /F`, { stdio: 'ignore' });
       } catch {
-        // process group may already be gone
+        // process may have already exited
       }
+      return;
+    }
+
+    try {
+      process.kill(-rootPid, 'SIGKILL');
+    } catch {
+      // process group may already be gone
     }
 
     await new Promise((resolve) => setTimeout(resolve, 200));
