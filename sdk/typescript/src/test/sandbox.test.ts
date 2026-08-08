@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs/promises';
-import { Sandbox } from '../index.js';
+import { Sandbox, SandboxError } from '../index.js';
 
 test('Native Backend Sandbox Execution', async (t) => {
   const sandbox = await Sandbox.create({ backend: 'native', timeout: 5000 });
@@ -32,7 +32,7 @@ test('Native Backend Sandbox Execution', async (t) => {
 
     const meta = execution.metadata()!;
     assert.equal(meta.backend, 'native');
-    assert.equal(meta.specVersion, '0.1.1');
+    assert.equal(meta.specVersion, '0.1.2');
     assert.equal(meta.exitCode, 0);
     assert.equal(meta.timedOut, false);
     assert.equal(typeof meta.startedAt, 'string');
@@ -100,6 +100,90 @@ test('Native Backend Sandbox Execution', async (t) => {
     await fs.rm(tmpLocalDst, { force: true });
   });
 
+  await t.test('filesystem security: path traversal blocked on all VFS operations', async () => {
+    const secSandbox = await Sandbox.create({ backend: 'native' });
+    const tmpLocal = path.join(os.tmpdir(), `traversal-src-${Date.now()}.txt`);
+    await fs.writeFile(tmpLocal, 'payload');
+
+    const traversalOps: Array<[string, () => Promise<unknown>]> = [
+      ['writeFile', () => secSandbox.writeFile('../../../../etc/evil.txt', 'x')],
+      ['readFile', () => secSandbox.readFile('../../../../etc/hosts')],
+      ['downloadFile', () => secSandbox.downloadFile('../../../../etc/hosts', path.join(os.tmpdir(), `traversal-dst-${Date.now()}.txt`))],
+      ['uploadFile', () => secSandbox.uploadFile(tmpLocal, '../../../../etc/evil.txt')],
+    ];
+
+    for (const [op, fn] of traversalOps) {
+      await assert.rejects(
+        fn,
+        (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
+        `${op} should reject path traversal`
+      );
+    }
+
+    await fs.rm(tmpLocal, { force: true });
+    await secSandbox.destroy();
+  });
+
+  await t.test('filesystem security: symlink escapes blocked across read/write/download', async (t) => {
+    if (process.platform === 'win32') return t.skip('symlink escape tests are POSIX-only');
+    const secSandbox = await Sandbox.create({ backend: 'native' });
+
+    // read escape: workload-planted symlink to a host file
+    await secSandbox.exec('ln -s /etc/hosts link.txt').then((e) => e.wait());
+    await assert.rejects(
+      () => secSandbox.readFile('link.txt'),
+      (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
+      'symlink read escape should be blocked'
+    );
+
+    // download escape
+    const tmpDst = path.join(os.tmpdir(), `symlink-dl-${Date.now()}.txt`);
+    await assert.rejects(
+      () => secSandbox.downloadFile('link.txt', tmpDst),
+      (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
+      'symlink download escape should be blocked'
+    );
+    await fs.rm(tmpDst, { force: true });
+
+    // write escape: symlink pointing at a host file must not overwrite it
+    const victimPath = path.join(os.tmpdir(), `victim-${Date.now()}.txt`);
+    await fs.writeFile(victimPath, 'original');
+    await secSandbox.exec(`ln -s ${victimPath} victim.txt`).then((e) => e.wait());
+    await assert.rejects(
+      () => secSandbox.writeFile('victim.txt', 'pwnd'),
+      (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
+      'symlink write escape should be blocked'
+    );
+    const readback = await fs.readFile(victimPath, 'utf-8');
+    assert.equal(readback, 'original', 'host file must remain untouched');
+    await fs.rm(victimPath, { force: true });
+
+    // symlink-to-directory write escape
+    await secSandbox.exec('ln -s /etc dirlink').then((e) => e.wait());
+    await assert.rejects(
+      () => secSandbox.writeFile('dirlink/hostname', 'x'),
+      (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
+      'symlink-directory write escape should be blocked'
+    );
+
+    await secSandbox.destroy();
+  });
+
+  await t.test('filesystem security: exec workDir is contained and auto-created', async () => {
+    const secSandbox = await Sandbox.create({ backend: 'native' });
+    const escape = await secSandbox.exec('pwd', { workDir: '/etc' });
+    await assert.rejects(
+      () => escape.wait(),
+      (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
+      'absolute host workDir should be rejected'
+    );
+    const ex = await secSandbox.exec('pwd', { workDir: 'sub/nested' });
+    await ex.wait();
+    assert.equal(ex.status(), 'completed');
+    assert.ok(ex.stdout().trim().endsWith('sub/nested'), `pwd resolved to ${ex.stdout().trim()}`);
+    await secSandbox.destroy();
+  });
+
   await t.test('lifecycle: kills nested child processes on timeout and destroy', async () => {
     const isWin = process.platform === 'win32';
     // Spawn nested process (sh -> node child -> node grandchild)
@@ -164,6 +248,43 @@ test('Native Backend Sandbox Execution', async (t) => {
     await quotaSandbox.writeFile('recovery.txt', 'OK');
     const readBuf = await quotaSandbox.readFile('recovery.txt');
     assert.equal(readBuf.toString(), 'OK');
+
+    await quotaSandbox.destroy();
+  });
+
+  await t.test('resource enforcement: exec writes past disk quota -> ERR_DISK_QUOTA_EXCEEDED with rollback & recovery', async () => {
+    const { SandboxResourceError } = await import('../index.js');
+    const quotaSandbox = await Sandbox.create({ backend: 'native', diskQuota: '1KB' });
+
+    // A workload that writes ~200KB faster than the 250ms poller tick must
+    // still be caught by the final workspace size check on close.
+    const writeScript = `
+      const fs = require('fs');
+      const b = Buffer.alloc(1024, 120);
+      for (let i = 0; i < 200; i++) {
+        fs.writeFileSync('bulk-' + i + '.bin', b);
+      }
+    `.replace(/\n\s*/g, ' ');
+
+    await assert.rejects(
+      async () => {
+        await quotaSandbox.exec(`node -e "${writeScript}"`).then((e) => e.wait());
+      },
+      (err: unknown) => {
+        assert.ok(err instanceof SandboxResourceError, `Expected SandboxResourceError, got ${err}`);
+        const resErr = err as InstanceType<typeof SandboxResourceError>;
+        assert.equal(resErr.code, 'ERR_DISK_QUOTA_EXCEEDED');
+        assert.equal(resErr.resource, 'disk');
+        assert.equal(resErr.recoverable, true);
+        return true;
+      }
+    );
+
+    // Rollback must leave the workspace under quota so the sandbox is reusable
+    const recovery = await quotaSandbox.exec('echo "recovered"');
+    await recovery.wait();
+    assert.equal(recovery.status(), 'completed');
+    assert.match(recovery.stdout(), /recovered/);
 
     await quotaSandbox.destroy();
   });
