@@ -1,6 +1,6 @@
 # `@palmshed/sandbox` API Reference
 
-> Runtime specification: `0.1.2` | SDK: `0.1.0-beta.1`
+> Runtime specification: `1.0.0` | SDK: `1.0.0`
 
 ---
 
@@ -13,7 +13,7 @@ npm install @palmshed/sandbox
 Or from a local tarball:
 
 ```bash
-npm install ./palmshed-sandbox-0.1.0-beta.1.tgz
+npm install ./palmshed-sandbox-1.0.0.tgz
 ```
 
 ---
@@ -208,7 +208,7 @@ const meta = execution.metadata();
 // {
 //   id: 'exec_abc123',
 //   backend: 'native',
-//   specVersion: '0.1.2',
+//   specVersion: '1.0.0',
 //   startedAt: '2026-08-08T00:00:00.000Z',
 //   finishedAt: '2026-08-08T00:00:01.200Z',
 //   durationMs: 1200,
@@ -343,12 +343,12 @@ behavior, and sandbox-reuse expectations of each code, see
 
 ---
 
-## Known Limitations (`v0.1.0-beta.1`)
+## Known Limitations (`v1.0.0`)
 
 * `cancel()` sends `SIGTERM` to the process group (then `SIGKILL` after 1s).
 * CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is experimental and not enforced.
 * CPU and memory enforcement on Windows is best-effort (PowerShell `Get-CimInstance` process-tree polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
-* Filesystem isolation (chroot, mount restrictions) is not yet active.
+* OS-level filesystem isolation (chroot, mount restrictions) is not yet active; the native backend provides soft process isolation with a hardened virtual filesystem boundary.
 * Docker backend is available but only claims `filesystem` and `streaming`. Its `cpuLimits`, `memoryLimits`, and `networkIsolation` capabilities are reported `false`: the driver wires `docker run/exec/cp/stop` CLI calls, but CPU time-budget enforcement, per-execution memory overrides, and network policies beyond `disabled` are not implemented or integration-tested (work item `#4`). Verify `sandbox.capabilities` before relying on Docker resource/network guarantees.
 
-These are tracked in the [`v0.1.0` milestone](https://github.com/palmshed/sandbox/milestone/1).
+These are tracked in the [`v1.0.0` milestone](https://github.com/palmshed/sandbox/milestone/1).

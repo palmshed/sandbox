@@ -15,9 +15,9 @@
 
 ## Current Status & Stability Expectations
 
-- **SDK Release Version**: `v0.1.0-beta.1` (Phase 2 complete: process lifecycle, resource enforcement, network isolation)
-- **Runtime Specification**: `0.1.2` (see [`spec/version.md`](spec/version.md))
-- **Stability**: **Beta**. All Phase 2 capabilities are implemented and verified. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md). The SDK release version and runtime specification version are managed independently: the SDK advances through pre-release versions (alpha → beta → rc → stable) while the specification version reflects contract changes only.
+- **SDK Release Version**: `v1.0.0` (Phase 2 complete: process lifecycle, resource enforcement, network isolation)
+- **Runtime Specification**: `1.0.0` (frozen; see [`spec/version.md`](spec/version.md))
+- **Stability**: **Stable**. The runtime contract is frozen at v1.0.0. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md) and changes are gated by the 6-month deprecation policy ([`spec/deprecations.md`](spec/deprecations.md)).
 - **Network isolation note**: On macOS, `networkIsolation` is `true` (5/5 adversarial leak tests pass). On Linux, it is dynamically probed at `init()`: `true` when unprivileged user namespaces are available, `false` on CI runners where they are restricted (falls back to proxy env vars). On Windows it is `false` (no native unprivileged network isolation; see RFC 0004). The Docker backend reports `networkIsolation`, `cpuLimits`, and `memoryLimits` as `false` until its enforcement is implemented and integration-tested (work item `#4`).
 - **v1.0 security guarantee**: **Native v1.0 provides soft process isolation with a hardened virtual filesystem boundary. It does not provide host-filesystem isolation for executed workloads.** Platform limitations:
   - **OS-level filesystem isolation** (chroot / mount namespaces / Seatbelt FS rules): post-v1.0 (see RFC 0003, `SECURITY.md`)

@@ -7,7 +7,7 @@ import { Sandbox } from '../../sdk/typescript/dist/index.js';
 
 const specVersion = fs
   .readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../spec/version.md'), 'utf-8')
-  .match(/\*\*0\.1\.\d\*\*/)?.[0]
+  .match(/\*\*\d+\.\d+\.\d+\*\*/)?.[0]
   .replace(/\*/g, '');
 
 /**

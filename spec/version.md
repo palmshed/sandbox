@@ -1,6 +1,6 @@
 # Sandbox Specification Versioning
 
-Current Specification Version: **0.1.2**
+Current Specification Version: **1.0.0**
 
 ## Versioning Rules
 
@@ -11,6 +11,11 @@ The Palmshed Sandbox specification follows Semantic Versioning (MAJOR.MINOR.PATC
 - **PATCH**: Backward-compatible bug fixes or clarifications in documentation and JSON schemas.
 
 ## Specification Changelog
+
+### v1.0.0 (Frozen runtime contract)
+- Frozen the runtime contract: JSON schemas (`sandbox.schema.json`, `exec.schema.json`, `filesystem.schema.json`, `capabilities.schema.json`) are stable at v1.0.0. Subsequent changes follow SemVer and the 6-month deprecation policy (`compatibility.md`, `deprecations.md`).
+- `capabilities.schema.json`: corrected the required field list (`networkIsolation`, previously mistyped as `network isolation`).
+- `exec.schema.json`: `ExecResult` now includes `id` (required) and the structured `metadata` object (with `ExecutionMetadata`), matching the SDK and `spec/exec_metadata.md`.
 
 ### v0.1.2 (Filesystem boundary & environment contract)
 - Added `diskQuota` to `sandbox.schema.json`: enforced on VFS writes and, during execution, across the sandbox workspace via process-group kill (`ERR_DISK_QUOTA_EXCEEDED`).

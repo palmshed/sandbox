@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { NativeBackend } from '../../sdk/typescript/dist/backends/native.js';
 
 /**
- * Spec-Version: 0.1.2
+ * Spec-Version: 1.0.0
  */
-test('TCK: Execution Module [Spec-Version: 0.1.2]', async (t) => {
+test('TCK: Execution Module [Spec-Version: 1.0.0]', async (t) => {
   const engine = new NativeBackend();
   await engine.init({ env: { EXPLICIT_VAR: 'injected' } });
 

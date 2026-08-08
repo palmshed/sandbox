@@ -1,8 +1,9 @@
 # Release Readiness Plan (v1.0.0)
 
-This document plans the specification **v1.0.0** freeze. The spec is NOT frozen
-yet; this is the working checklist for making the contract and packaging clean
-before freezing.
+This document records the specification **v1.0.0** freeze. The runtime contract
+is frozen as of 2026-08-09: `spec/version.md` reports `1.0.0`, the JSON schemas
+are stable, `release.yml` gates publish on spec/SDK version alignment, and the
+governance promises below are enforceable.
 
 ## Freeze criteria (definition of done)
 
@@ -10,29 +11,29 @@ Frozen means: `spec/version.md` reports `1.0.0`, the JSON schemas are stable,
 `release.yml` gates publish on spec/SDK version alignment, and the governance
 promises below are enforceable.
 
-- [ ] **Schema audit**: every field in `sandbox.schema.json`, `exec.schema.json`,
+- [x] **Schema audit**: every field in `sandbox.schema.json`, `exec.schema.json`,
       `filesystem.schema.json`, and `capabilities.schema.json` is implemented,
       tested, and documented in `docs/api.md` and `docs/errors.md`.
-- [ ] **Governance aligned**:
-  - [ ] Deprecation policy: strict 6-month window, binding at v1.0.0
+- [x] **Governance aligned**:
+  - [x] Deprecation policy: strict 6-month window, binding at v1.0.0
         (`spec/deprecations.md`, aligned with Phase 8 wording).
-  - [ ] SemVer guarantees stated (`spec/compatibility.md`).
-  - [ ] CHANGELOG complete with an `[1.0.0]` entry.
-- [ ] **Packaging clean**:
-  - [ ] `files` allowlist ships only `dist/`, `LICENSE`, `README.md`.
-  - [ ] Consumer-facing `sdk/typescript/README.md` present.
-  - [ ] Zero runtime dependencies.
-  - [ ] `engines` declares supported Node.js LTS lines.
-- [ ] **Runtime matrix**:
+  - [x] SemVer guarantees stated (`spec/compatibility.md`).
+  - [x] CHANGELOG complete with an `[1.0.0]` entry.
+- [x] **Packaging clean**:
+  - [x] `files` allowlist ships only `dist/`, `LICENSE`, `README.md`.
+  - [x] Consumer-facing `sdk/typescript/README.md` present.
+  - [x] Zero runtime dependencies.
+  - [x] `engines` declares supported Node.js LTS lines.
+- [x] **Runtime matrix**:
   - [x] Node.js LTS lines (20, 22) covered in CI (`ci.yml` `node-lts` job on ubuntu, macOS, and Windows).
   - [x] Linux distribution / macOS compatibility matrix documented (see below).
-- [ ] **Verification gates**:
+- [x] **Verification gates**:
   - [x] All examples verified against the packed release artifact in CI
         (`examples.yml` packs and installs the tarball, then runs all four
         examples; see `examples/README.md`).
-  - [ ] 3-OS CI, compliance & TCK, repro laboratory, consumer test, and
+  - [x] 3-OS CI, compliance & TCK, repro laboratory, consumer test, and
         documentation punctuation check all green.
-  - [ ] `npm pack --dry-run` inspected before each release.
+  - [x] `npm pack --dry-run` inspected before each release.
 
 ## Runtime & platform compatibility matrix (verified)
 

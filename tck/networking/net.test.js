@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { NativeBackend } from '../../sdk/typescript/dist/backends/native.js';
 
 /**
- * Spec-Version: 0.1.0
+ * Spec-Version: 1.0.0
  */
-test('TCK: Networking Module [Spec-Version: 0.1.0]', async (t) => {
+test('TCK: Networking Module [Spec-Version: 1.0.0]', async (t) => {
   const engine = new NativeBackend();
   await engine.init({ network: 'disabled' });
 

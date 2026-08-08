@@ -13,11 +13,13 @@ async function run() {
 
   // Exec command
   const res = await sandbox.exec('node -v');
+  await res.wait();
   console.log('Node version in sandbox:', res.stdout().trim());
 
   // Write and execute file
   await sandbox.writeFile('main.js', 'console.log("Hello from Palmshed Sandbox!");');
   const runRes = await sandbox.exec('node main.js');
+  await runRes.wait();
   console.log('Execution result:', runRes.stdout().trim());
 
   await sandbox.destroy();

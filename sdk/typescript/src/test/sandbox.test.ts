@@ -32,7 +32,7 @@ test('Native Backend Sandbox Execution', async (t) => {
 
     const meta = execution.metadata()!;
     assert.equal(meta.backend, 'native');
-    assert.equal(meta.specVersion, '0.1.2');
+    assert.equal(meta.specVersion, '1.0.0');
     assert.equal(meta.exitCode, 0);
     assert.equal(meta.timedOut, false);
     assert.equal(typeof meta.startedAt, 'string');

@@ -7,10 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased]
+## [1.0.0] - 2026-08-09
 
 ### Changed
-- Deprecation policy (`deprecations.md`): the one-minor-version-cycle window is replaced with a strict **6-month** window, measured in calendar time from the deprecation announcement release. The 6-month window becomes a binding guarantee at specification v1.0.0; see `docs/release-readiness.md` for the freeze plan.
+- Frozen the runtime contract. JSON schemas are stable at v1.0.0; subsequent changes follow SemVer (`compatibility.md`) and the 6-month deprecation policy (`deprecations.md`).
+- Deprecation policy (`deprecations.md`): the one-minor-version-cycle window is replaced with a strict **6-month** window, measured in calendar time from the deprecation announcement release. The 6-month window becomes a binding guarantee at specification v1.0.0.
+
+### Fixed
+- `capabilities.schema.json`: required field list referenced `network isolation` (with a space); corrected to `networkIsolation`.
+- `exec.schema.json`: `ExecResult` now documents `id` (required) and the structured `metadata` object, matching the SDK and `spec/exec_metadata.md` (`additionalProperties: false` previously forbade the SDK's actual result shape).
 
 ---
 

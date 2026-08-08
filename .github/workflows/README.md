@@ -16,3 +16,4 @@
 - **consumer-test.yml**: No secret tokens; the `registry-install` job installs the published `@palmshed/sandbox@beta` package from the npm registry.
 - **release.yml**: Requires `GITHUB_TOKEN` (auto-provisioned) and an npm publishing token (`NODE_AUTH_TOKEN` via `setup-node` `registry-url`).
 - Workflows serve as part of the public API and MUST be kept synchronized with specification updates.
+- All workflows pin `actions/checkout@v5` and `actions/setup-node@v5` (v4 and earlier are built on Node 20, which is deprecated on GitHub runners). Artifact upload/download remain on `@v4`.

@@ -681,7 +681,7 @@ export class NativeBackend implements BackendEngine {
         const metadata = {
           id: execId,
           backend: this.name,
-          specVersion: '0.1.2',
+          specVersion: '1.0.0',
           startedAt: new Date(startTime).toISOString(),
           finishedAt: new Date(finishedAtMs).toISOString(),
           durationMs,

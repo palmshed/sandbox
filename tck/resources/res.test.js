@@ -4,9 +4,9 @@ import { NativeBackend } from '../../sdk/typescript/dist/backends/native.js';
 import { SandboxResourceError } from '../../sdk/typescript/dist/index.js';
 
 /**
- * Spec-Version: 0.1.2
+ * Spec-Version: 1.0.0
  */
-test('TCK: Resources Module [Spec-Version: 0.1.2]', async (t) => {
+test('TCK: Resources Module [Spec-Version: 1.0.0]', async (t) => {
   const engine = new NativeBackend();
   await engine.init({ cpu: 1, memory: '512MB', diskQuota: '1KB', timeout: 20000 });
 

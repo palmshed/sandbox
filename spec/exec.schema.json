@@ -41,8 +41,12 @@
     },
     "ExecResult": {
       "type": "object",
-      "required": ["exitCode", "stdout", "stderr", "durationMs", "timedOut"],
+      "required": ["id", "exitCode", "stdout", "stderr", "durationMs", "timedOut"],
       "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique execution identifier (e.g. exec_9a8b7c6d)"
+        },
         "exitCode": {
           "type": "integer"
         },
@@ -61,6 +65,46 @@
         "cpuTimeMs": {
           "type": "number",
           "description": "Total CPU time consumed by the execution process group in milliseconds (best-effort reporting)"
+        },
+        "metadata": {
+          "$ref": "#/definitions/ExecutionMetadata"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ExecutionMetadata": {
+      "type": "object",
+      "required": ["id", "backend", "specVersion", "startedAt", "finishedAt", "durationMs", "exitCode", "timedOut"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "backend": {
+          "type": "string"
+        },
+        "specVersion": {
+          "type": "string"
+        },
+        "startedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationMs": {
+          "type": "number"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "timedOut": {
+          "type": "boolean"
+        },
+        "cpuTimeMs": {
+          "type": "number",
+          "description": "Total CPU time consumed by the execution process group in ms (best-effort)"
         }
       },
       "additionalProperties": false

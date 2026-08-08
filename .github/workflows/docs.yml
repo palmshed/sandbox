@@ -10,7 +10,7 @@ jobs:
   punctuation-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       # Hard-fails on Unicode em dashes in prose; warns on prose "--".
       # Technical syntax (code fences, inline code, --- rules, table
       # separators, CLI flags, POSIX --) is preserved.
@@ -20,7 +20,7 @@ jobs:
   validate-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Verify READMEs Existence
         run: |
           test -f README.md
@@ -41,8 +41,8 @@ jobs:
   generate-api-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: 'npm'

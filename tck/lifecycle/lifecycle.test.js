@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { NativeBackend } from '../../sdk/typescript/dist/backends/native.js';
 
 /**
- * Spec-Version: 0.1.0
+ * Spec-Version: 1.0.0
  */
-test('TCK: Lifecycle Module [Spec-Version: 0.1.0]', async (t) => {
+test('TCK: Lifecycle Module [Spec-Version: 1.0.0]', async (t) => {
   const engine = new NativeBackend();
 
   await t.test('Init and Destroy contract', async () => {

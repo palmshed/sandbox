@@ -4,9 +4,9 @@ import { NativeBackend } from '../../sdk/typescript/dist/backends/native.js';
 import { SandboxError } from '../../sdk/typescript/dist/index.js';
 
 /**
- * Spec-Version: 0.1.2
+ * Spec-Version: 1.0.0
  */
-test('Compliance Suite: Backend Engine Contract (NativeBackend) [Spec-Version: 0.1.2]', async (t) => {
+test('Compliance Suite: Backend Engine Contract (NativeBackend) [Spec-Version: 1.0.0]', async (t) => {
   const engine = new NativeBackend();
 
   t.after(async () => {
