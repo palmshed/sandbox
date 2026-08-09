@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     - cron: '0 2 * * 1'
+    - cron: '0 3 * * *'
 
 permissions:
   contents: read
@@ -18,3 +19,54 @@ jobs:
           node-version: '20'
       - name: Build & Run SDK Test Suite
         run: cd sdk/typescript && npm ci && npm test
+
+  # Nightly (cron 3am) sustained soak against the packed release artifact.
+  nightly-soak:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Build SDK
+        run: cd sdk/typescript && npm ci && npm run build
+      - name: Pack and install release artifact
+        shell: bash
+        run: |
+          PACKFILE=$(cd sdk/typescript && npm pack --silent | tail -n 1)
+          npm install --no-save "./sdk/typescript/$PACKFILE"
+      - name: Nightly soak (5 min, 25 sandboxes)
+        run: node production/soak/soak.mjs --minutes 5 --sandboxes 25 --verbose
+
+  # Nightly exact-version gate: the packed artifact installed and exercised by
+  # the production suite must report exactly the version declared in
+  # spec/version.md. A drift here means spec-first governance was bypassed.
+  nightly-version-gate:
+    if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+      - name: Build SDK
+        run: cd sdk/typescript && npm ci && npm run build
+      - name: Pack and install release artifact
+        shell: bash
+        run: |
+          PACKFILE=$(cd sdk/typescript && npm pack --silent | tail -n 1)
+          npm install --no-save "./sdk/typescript/$PACKFILE"
+      - name: Verify exact version alignment (package vs spec)
+        run: |
+          PKG_VERSION=$(node -e "console.log(require('@palmshed/sandbox/package.json').version)")
+          SPEC_VERSION=$(sed -nE 's/^Current Specification Version: \*\*([^*]+)\*\*/\1/p' spec/version.md)
+          echo "package=$PKG_VERSION spec=$SPEC_VERSION"
+          if [ "$PKG_VERSION" != "$SPEC_VERSION" ]; then
+            echo "version drift: package $PKG_VERSION does not match spec $SPEC_VERSION" >&2
+            exit 1
+          fi
+          if ! git tag --list "v$PKG_VERSION" | grep -q "v$PKG_VERSION"; then
+            echo "tag v$PKG_VERSION missing; package version must be tagged" >&2
+            exit 1
+          fi
