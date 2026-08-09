@@ -9,7 +9,7 @@
 | `security.yml` | `npm audit` dependency check | Push, Pull Request, Schedule (weekly) | ubuntu |
 | `docs.yml` | Verify required documentation files exist + generate Typedoc API reference | Push, Pull Request | ubuntu |
 | `scheduled-tests.yml` | Scheduled SDK test run (benchmark harness not yet implemented; baselines are post-v1.0) | Manual (`workflow_dispatch`), Schedule (weekly) | ubuntu |
-| `release.yml` | Version-gated release: validation gate, pack contents verification, artifacts & SBOM, GitHub release, npm publish + registry smoke test (TypeScript); Rust/Go/Python publishers are placeholders | Version tags (`v*`) | ubuntu-24.04 (pinned) |
+| `release.yml` | Version-gated release: validation gate, pack contents verification, artifacts & SBOM, GitHub release, npm publish + registry smoke test (TypeScript); Rust/Go/Python publishers are placeholders. The publish job is idempotent (skips already-published versions) and the smoke test retries install for up to 150s to absorb registry propagation delay | Version tags (`v*`) | ubuntu-24.04 (pinned) |
 
 ## Governance & Secrets
 - **ci.yml**: Requires no secret tokens.

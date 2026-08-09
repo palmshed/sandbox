@@ -194,7 +194,7 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
   - [x] Explicit supported Node.js runtime matrix (LTS versions: `engines >=20` in `sdk/typescript/package.json`; `ci.yml` `node-lts` job verifies Node 20 + 22 on Ubuntu, macOS, and Windows)
   - [x] Native backend driver compatibility matrix across Linux distributions / macOS (documented in `docs/release-readiness.md` with per-platform verified/best-effort status)
 - [x] All examples verified against release tarball in CI (`examples.yml` packs the SDK, installs the tarball into the repo-root `node_modules`, then runs all four examples on Ubuntu, macOS, and Windows)
-- [ ] Package published to npm registry with zero-dependency core engine (packaging prepared: `files` allowlist ships `dist/` + `LICENSE` + `README.md`, `sdk/typescript/README.md` added, `engines` declared; final publish happens at v1.0.0)
+- [x] Package published to npm registry with zero-dependency core engine (`@palmshed/sandbox@1.0.0` published as `latest`; `files` allowlist ships `dist/` + `LICENSE` + `README.md`, `sdk/typescript/README.md` added, `engines` declared)
 
 ---
 

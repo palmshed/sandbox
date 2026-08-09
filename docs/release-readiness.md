@@ -5,6 +5,16 @@ is frozen as of 2026-08-09: `spec/version.md` reports `1.0.0`, the JSON schemas
 are stable, `release.yml` gates publish on spec/SDK version alignment, and the
 governance promises below are enforceable.
 
+**Status: v1.0.0 released.** `@palmshed/sandbox@1.0.0` is published to the npm
+registry with the `latest` dist-tag, and the GitHub `v1.0.0` release (7 assets,
+not prerelease) is complete. The first end-to-end publish exposed a release
+workflow bug, fixed in the same cycle: `release.yml` did not wire the
+`NPM_TOKEN` repository secret into `NODE_AUTH_TOKEN`, so npm published with
+`setup-node`'s placeholder token and was rejected with E404. The publish job now
+sets `env.NODE_AUTH_TOKEN` from `secrets.NPM_TOKEN`, skips the publish when the
+tagged version already exists (idempotent re-runs), and the registry smoke test
+retries install for up to 150s to absorb propagation delay.
+
 ## Freeze criteria (definition of done)
 
 Frozen means: `spec/version.md` reports `1.0.0`, the JSON schemas are stable,
