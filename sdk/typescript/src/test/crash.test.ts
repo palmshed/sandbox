@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs/promises';
 import * as fssync from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, execSync, ChildProcess } from 'child_process';
 import { Sandbox } from '../index.js';
 import { reapStaleSandboxes, registryDir, readHostStartToken, reapDiagnostics } from '../core/crashRecovery.js';
 
@@ -190,11 +190,22 @@ test('Crash Recovery (RFC 0005)', async (t) => {
           const manualReap = await reapStaleSandboxes(state.dir);
           const stillExists = fssync.existsSync(state.dir);
           await probe.destroy();
+          let procProbe = '';
+          if (isWin) {
+            try {
+              procProbe = execSync(
+                `powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match 'setInterval' } | Select-Object ProcessId,ParentProcessId,Name | ConvertTo-Json"`,
+                { encoding: 'utf-8', timeout: 15000 }
+              ).trim();
+            } catch (e) {
+              procProbe = `probe error: ${String((e as Error).message)}`;
+            }
+          }
           throw new Error(
             `reaper failed to remove crashed dir: ` +
               `hostPid=${state.pid} hostAlive=${hostAlive} ` +
               `entry=${JSON.stringify(entry)} manualReap=${manualReap} stillExists=${stillExists} ` +
-              `diag=${JSON.stringify(reapDiagnostics)}; ` +
+              `diag=${JSON.stringify(reapDiagnostics)} winProcs=${procProbe}; ` +
               `original: ${(err as Error).message}`
           );
         }
