@@ -78,42 +78,56 @@ function pidAlive(pid: number): boolean {
  * constant for the lifetime of a process, unlike vsize/utime fields which
  * change and would cause false reaping. macOS: `ps -o lstart=`. Windows:
  * process creation time (best-effort).
+ *
+ * The token is constant for a process's lifetime, and `readHostStartToken` is
+ * called once per registry entry per reap (and often the same host), so the
+ * result is cached per pid. On Windows reading it spawns a PowerShell process;
+ * without the cache, the reap performed one subprocess spawn per entry (and
+ * per concurrently-created sandbox), which is quadratic under the production
+ * concurrency scenario and blew the scenario budgets.
  */
+let cachedHostToken: { pid: number; token: string | null } | null = null;
 export function readHostStartToken(pid: number): string | null {
+  if (cachedHostToken && cachedHostToken.pid === pid) return cachedHostToken.token;
+  let token: string | null;
   if (process.platform === 'linux') {
     try {
       const stat = fssync.readFileSync(`/proc/${pid}/stat`, 'utf-8');
       const closeParen = stat.lastIndexOf(')');
-      if (closeParen === -1) return null;
-      const fields = stat.slice(closeParen + 2).split(' ');
-      return fields[19] ?? null;
+      if (closeParen === -1) {
+        token = null;
+      } else {
+        const fields = stat.slice(closeParen + 2).split(' ');
+        token = fields[19] ?? null;
+      }
     } catch {
-      return null;
+      token = null;
     }
-  }
-  if (process.platform === 'darwin') {
+  } else if (process.platform === 'darwin') {
     try {
       const out = execSync(`ps -o lstart= -p ${pid}`, {
         stdio: ['ignore', 'pipe', 'ignore'],
       }).toString().trim();
-      return out || null;
+      token = out || null;
     } catch {
-      return null;
+      token = null;
     }
-  }
-  if (process.platform === 'win32') {
+  } else if (process.platform === 'win32') {
     try {
       const script = `(Get-Process -Id ${pid} -ErrorAction SilentlyContinue).StartTime.ToString('yyyyMMddHHmmssfff')`;
       const encoded = Buffer.from(script, 'utf16le').toString('base64');
       const out = execSync(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, {
         stdio: ['ignore', 'pipe', 'ignore'],
       }).toString().trim();
-      return out || null;
+      token = out || null;
     } catch {
-      return null;
+      token = null;
     }
+  } else {
+    token = null;
   }
-  return null;
+  cachedHostToken = { pid, token };
+  return token;
 }
 
 /** Read a registry entry, or null when missing/unreadable. */
@@ -342,27 +356,38 @@ export async function registerSandbox(sandboxDir: string, hostStart: string): Pr
   }
 }
 
+/** Pending pgid-record writes per sandbox, so unregister can await them. */
+const pendingPgidWrites = new Map<string, Promise<void>>();
+
 /**
  * Record a workload root PID (POSIX process-group id, Windows tree root) for
- * the reaper to terminate if the host dies. Fire-and-forget best-effort.
+ * the reaper to terminate if the host dies. Best-effort: failure to record
+ * weakens recovery but never breaks exec.
+ *
+ * Writes per sandbox are serialized and tracked so unregisterSandbox can await
+ * them before removing the entry. Without this, a still-pending read-then-write
+ * (the entry already in the registry) could recreate the entry file after
+ * unregister removed it, leaking a registry entry after a clean destroy.
  */
 export function recordSandboxPgid(sandboxDir: string, pgid: number): void {
   if (!Number.isInteger(pgid)) return;
-  void readEntry(sandboxDir)
-    .then((entry) => {
-      if (!entry || entry.hostPid !== process.pid) return;
-      if (!entry.pgids.includes(pgid)) {
-        entry.pgids.push(pgid);
-        if (entry.pgids.length > MAX_PGIDS) entry.pgids.splice(0, entry.pgids.length - MAX_PGIDS);
-        return writeEntry(sandboxDir, entry).catch(() => undefined);
-      }
-      return undefined;
-    })
-    .catch(() => undefined);
+  const previous = pendingPgidWrites.get(sandboxDir) ?? Promise.resolve();
+  const write = previous.then(async () => {
+    const entry = await readEntry(sandboxDir);
+    if (!entry || entry.hostPid !== process.pid) return;
+    if (!entry.pgids.includes(pgid)) {
+      entry.pgids.push(pgid);
+      if (entry.pgids.length > MAX_PGIDS) entry.pgids.splice(0, entry.pgids.length - MAX_PGIDS);
+      await writeEntry(sandboxDir, entry).catch(() => undefined);
+    }
+  }).catch(() => undefined);
+  pendingPgidWrites.set(sandboxDir, write);
 }
 
 /** Remove the registry entry on normal sandbox destruction. */
 export async function unregisterSandbox(sandboxDir: string): Promise<void> {
+  await (pendingPgidWrites.get(sandboxDir) ?? Promise.resolve());
+  pendingPgidWrites.delete(sandboxDir);
   await removeEntry(sandboxDir);
 }
 

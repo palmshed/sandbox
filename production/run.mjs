@@ -43,7 +43,10 @@ async function loadScenarios() {
       file,
       id: scenario.id ?? file.replace(/\.mjs$/, ''),
       title: scenario.title ?? file,
-      timeoutMs: scenario.timeoutMs ?? 60000,
+      // Windows runners are materially slower at process spawn/teardown; give
+      // the platform its own headroom so the scenario asserts behavior rather
+      // than wall-clock speed.
+      timeoutMs: (scenario.timeoutMs ?? 60000) * (process.platform === 'win32' ? 1.5 : 1),
       platforms: scenario.platforms ?? ['darwin', 'linux', 'win32'],
       run: scenario.run,
     });
