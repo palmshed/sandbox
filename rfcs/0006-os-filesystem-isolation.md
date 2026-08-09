@@ -176,6 +176,45 @@ Each test runs under the confinement and asserts the attempt **fails** while the
 
 The adversarial tests become a new production scenario (`production/scenarios/os-filesystem-isolation.mjs`) run on the packed artifact, plus targeted unit/integration tests in `sdk/typescript/src/test/osfilesystem.test.ts` and repros under `repro/filesystem/`.
 
+## Capability Probe Results
+
+Probe scripts: `scripts/probes/landlock-probe.c` (C helper) and
+`scripts/probes/landlock-capability.mjs` (runner). Run:
+`node scripts/probes/landlock-capability.mjs [--json]`. The C helper is
+compiled with `cc` at probe time, executed as the invoking user, and verifies
+the RFC's assumptions directly against the kernel (ABI query, ruleset
+create/add/apply, allowlist read/write, outside read/write/create denial,
+symlink-escape denial, descendant inheritance, and the unprivileged
+requirement). It reports `supported`, `unsupported`, or `unknown` and never
+touches the SDK, the sandbox path, or the capability flag.
+
+**Important boundary**: passing this probe does **not** justify
+`osFilesystemIsolation: supported`. It proves the kernel mechanism is present
+and behaves correctly; the flag becomes `supported` only after the actual
+sandbox path passes the adversarial test plan above.
+
+### Baseline probe outcome (Ubuntu 24.04, kernel 6.8.0, unprivileged user)
+
+| Assumption (RFC 0006 dependency) | Result |
+|---|---|
+| Landlock ABI available | **ABI 4** |
+| REFER right (hardlink/rename semantics, E3/E8) supported | yes (ABI >= 2) |
+| Ruleset create / add_rule / restrict_self as unprivileged user | ok |
+| no_new_privs applied | ok |
+| Allowlist read + write (workspace) | ok |
+| Outside read (secret file) denied | ok |
+| Outside write (append) denied | ok |
+| Outside create (new file in parent dir) denied | ok |
+| Workspace symlink escaping outside denied | ok |
+| Descendant process inherits the denial | ok |
+| unprivileged enforcement (no root run) | yes |
+| **Verdict** | **supported** (mechanism-level) |
+
+Follow-up probes required before implementation: the same run must be
+repeated on the CI Ubuntu image used by `production.yml`/`docs.yml`, and the
+runtime allowlist the reference SDK needs (`node`, `sh`) must be enumerated
+(`ldd`-derived) so the allowlist in the implementation is evidence-based.
+
 ## Design Decision Gate (this RFC does not implement)
 
 Following RFC 0004's discipline, the order is:
