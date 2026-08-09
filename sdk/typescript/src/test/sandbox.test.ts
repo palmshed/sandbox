@@ -129,7 +129,7 @@ test('Native Backend Sandbox Execution', async (t) => {
     const secSandbox = await Sandbox.create({ backend: 'native' });
 
     // read escape: workload-planted symlink to a host file
-    await secSandbox.exec('ln -s /etc/hosts link.txt').then((e) => e.wait());
+    await secSandbox.exec('node -e "require(\'fs\').symlinkSync(\'/etc/hosts\',\'link.txt\')"').then((e) => e.wait());
     await assert.rejects(
       () => secSandbox.readFile('link.txt'),
       (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
@@ -148,7 +148,7 @@ test('Native Backend Sandbox Execution', async (t) => {
     // write escape: symlink pointing at a host file must not overwrite it
     const victimPath = path.join(os.tmpdir(), `victim-${Date.now()}.txt`);
     await fs.writeFile(victimPath, 'original');
-    await secSandbox.exec(`ln -s ${victimPath} victim.txt`).then((e) => e.wait());
+    await secSandbox.exec(`node -e "require('fs').symlinkSync('${victimPath}','victim.txt')"`).then((e) => e.wait());
     await assert.rejects(
       () => secSandbox.writeFile('victim.txt', 'pwnd'),
       (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',
@@ -159,7 +159,7 @@ test('Native Backend Sandbox Execution', async (t) => {
     await fs.rm(victimPath, { force: true });
 
     // symlink-to-directory write escape
-    await secSandbox.exec('ln -s /etc dirlink').then((e) => e.wait());
+    await secSandbox.exec('node -e "require(\'fs\').symlinkSync(\'/etc\',\'dirlink\')"').then((e) => e.wait());
     await assert.rejects(
       () => secSandbox.writeFile('dirlink/hostname', 'x'),
       (err: unknown) => err instanceof SandboxError && err.code === 'FS_ERROR',

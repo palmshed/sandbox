@@ -55,6 +55,10 @@
       },
       "description": "Explicit environment variables injected into executions. The host environment is NOT inherited wholesale; only a documented minimal allowlist (PATH, HOME, temp/locale variables) is carried from the host. These explicit values override the allowlist."
     },
+    "osFilesystemIsolation": {
+      "type": "boolean",
+      "description": "RFC 0006: apply OS-level filesystem isolation (workspace + runtime allowlist, else deny) when the backend supports it. Defaults to true when the mechanism is supported; false is an explicit opt-out, never a silent downgrade."
+    },
     "image": {
       "type": "string",
       "description": "Container image identifier (only used by docker or microvm backends)"

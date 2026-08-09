@@ -40,12 +40,12 @@ test('TCK: Filesystem Module [Spec-Version: 1.0.0]', async (t) => {
 
   await t.test('Symlink escapes are rejected with FS_ERROR [v0.1.2]', async (t) => {
     if (process.platform === 'win32') return t.skip('symlink escape assertions are POSIX-only');
-    await engine.exec('ln -s /etc/hosts link.txt');
+    await engine.exec('node -e "require(\'fs\').symlinkSync(\'/etc/hosts\',\'link.txt\')"');
     await assert.rejects(
       () => engine.readFile('link.txt'),
       (err) => err instanceof SandboxError && err.code === 'FS_ERROR'
     );
-    await engine.exec('ln -s /etc dirlink');
+    await engine.exec('node -e "require(\'fs\').symlinkSync(\'/etc\',\'dirlink\')"');
     await assert.rejects(
       () => engine.writeFile('dirlink/hostname', 'x'),
       (err) => err instanceof SandboxError && err.code === 'FS_ERROR'

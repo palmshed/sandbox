@@ -32,6 +32,11 @@
       "type": "boolean",
       "description": "True if real-time stdout/stderr log streaming is supported"
     },
+    "osFilesystemIsolation": {
+      "type": "string",
+      "enum": ["supported", "unsupported", "unknown"],
+      "description": "RFC 0006: whether the executed process tree is confined to the sandbox workspace plus a minimal read-only runtime allowlist. supported: enforced (Linux + Landlock, adversarial tests pass); unsupported: no host-filesystem confinement is enforced; unknown: the platform was not probed or setup failed, treat as no guarantee."
+    },
     "remoteExecution": {
       "type": "boolean",
       "default": false,

@@ -16,8 +16,36 @@ traversal (`..`), absolute host paths, and symlink escapes are rejected with
 `FS_ERROR`: a workload-planted symlink cannot redirect VFS operations to host
 files. `filesystem: true` means **isolated VFS operations**, not OS-level
 filesystem isolation of the executing process; the Native backend runs workloads
-as the host user. OS-level isolation (chroot, mount namespaces, Seatbelt
-filesystem rules) is post-v1.0 hardening. See `rfcs/0003-filesystem.md`.
+as the host user. See `rfcs/0003-filesystem.md`.
+
+## OS-Level Filesystem Isolation (RFC 0006)
+
+The Native backend can additionally confine the executed process tree to the
+sandbox workspace plus a minimal read-only runtime allowlist (interpreter,
+shared libraries, loader, config, zoneinfo), denying everything else at the
+kernel level. This is reported as the `osFilesystemIsolation` capability
+(`'supported'` | `'unsupported'` | `'unknown'`):
+
+- **Linux**: enforced via a Landlock ruleset applied by a confinement runner
+  launched behind `unshare --user --map-root-user` (unprivileged user
+  namespaces supply the `CAP_SYS_ADMIN` Landlock requires). The mechanism is
+  probed at `init()` with a real confined self-test before the capability
+  reports `supported`. Only `supported` must be treated as an enforced
+  boundary; `unknown`/`unsupported` mean ambient host rights.
+- **macOS**: `unknown` (Seatbelt filesystem profile is pending validation).
+- **Windows / other**: `unsupported` (no unprivileged native mechanism).
+
+Adversarial escapes E1-E10 and the threat model are defined in
+`rfcs/0006-os-filesystem-isolation.md`; the escape suite lives in
+`sdk/typescript/src/test/osfilesystem.test.ts` and the production scenario
+`production/scenarios/os-filesystem-isolation.mjs`. The workload cannot opt
+out per-execution; a sandbox may opt out explicitly with
+`Sandbox.create({ osFilesystemIsolation: false })`.
+
+**Declared residuals**: Landlock is path-based and does not hide `/proc` or
+`/sys`; reads of those trees may remain visible to the host user. OS-level
+isolation is not a defense against kernel exploits or privileged device-node
+attacks.
 
 ## Environment Contract
 

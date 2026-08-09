@@ -34,6 +34,12 @@ export interface SandboxOptions {
   network?: NetworkPolicy;
   /** Working directory inside the sandbox */
   workDir?: string;
+  /**
+   * RFC 0006: apply OS-level filesystem isolation when the backend supports it
+   * (Linux + Landlock). Defaults to true when the mechanism is supported; set
+   * to false for an explicit, documented opt-out (never a silent downgrade).
+   */
+  osFilesystemIsolation?: boolean;
   /** Environment variables key-value map */
   env?: Record<string, string>;
   /** Docker specific container image (only used when backend is docker) */

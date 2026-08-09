@@ -73,6 +73,7 @@ const gates = {
   quick: [
     ['Git state', 'verify-gitstate.mjs', []],
     ['Punctuation', 'punctuation-check.mjs', []],
+    ['OSFS source', 'gen-osfs-source.mjs', ['--check']],
     ['Documentation', 'verify-docs.mjs', ['--no-typedoc']],
     ['SDK typecheck', 'verify-sdk.mjs', ['--typecheck-only']],
   ],

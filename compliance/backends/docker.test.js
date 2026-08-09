@@ -26,6 +26,7 @@ test('Compliance Suite: Backend Engine Contract (DockerBackend) [Spec-Version: 1
       cpuLimits: false,
       memoryLimits: false,
       streaming: true,
+      osFilesystemIsolation: 'unsupported',
       remoteExecution: false,
     });
   });

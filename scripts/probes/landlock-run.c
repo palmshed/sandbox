@@ -219,8 +219,9 @@ int main(int argc, char **argv) {
    * Linux headers backfill, but a runtime new right would remain unrestricted.
    * That is a documented build-time boundary, not a silent fallback on a
    * supported right. */
-  fprintf(stderr, "landlock-run: ABI %d handled bytes %#llx\n", abi,
-          (unsigned long long)allAccess);
+  if (getenv("LL_VERBOSE"))
+    fprintf(stderr, "landlock-run: ABI %d handled bytes %#llx\n", abi,
+            (unsigned long long)allAccess);
 
   struct landlock_ruleset_attr attrs = {.handled_access_fs = allAccess};
   int ruleset_fd =
@@ -303,7 +304,8 @@ int main(int argc, char **argv) {
     return 1;
   }
   if (skipped) {
-    fprintf(stderr, "landlock-run: allowlist skipped %lu unparseable/missing entries\n", skipped);
+    if (getenv("LL_VERBOSE"))
+      fprintf(stderr, "landlock-run: allowlist skipped %lu unparseable/missing entries\n", skipped);
   }
 
   if (prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0)

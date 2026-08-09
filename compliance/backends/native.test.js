@@ -17,6 +17,12 @@ test('Compliance Suite: Backend Engine Contract (NativeBackend) [Spec-Version: 1
     assert.equal(typeof engine.capabilities.filesystem, 'boolean');
     assert.equal(typeof engine.capabilities.streaming, 'boolean');
     assert.equal(typeof engine.capabilities.remoteExecution, 'boolean');
+    // RFC 0006: the capability is a tri-state string ('supported' |
+    // 'unsupported' | 'unknown'), never truthy just because a probe exists.
+    assert.ok(
+      ['supported', 'unsupported', 'unknown'].includes(engine.capabilities.osFilesystemIsolation ?? ''),
+      'osFilesystemIsolation must be a documented tri-state string'
+    );
   });
 
   await t.test('Backend lifecycle init and execution contract', async () => {
@@ -36,7 +42,7 @@ test('Compliance Suite: Backend Engine Contract (NativeBackend) [Spec-Version: 1
       (err) => err instanceof SandboxError && err.code === 'FS_ERROR'
     );
     if (process.platform === 'win32') return t.skip('symlink escape assertion is POSIX-only');
-    await engine.exec('ln -s /etc/hosts link.txt');
+    await engine.exec('node -e "require(\'fs\').symlinkSync(\'/etc/hosts\',\'link.txt\')"');
     await assert.rejects(
       () => engine.readFile('link.txt'),
       (err) => err instanceof SandboxError && err.code === 'FS_ERROR'

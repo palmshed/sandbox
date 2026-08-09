@@ -34,6 +34,10 @@ const sandbox = await Sandbox.create({
   cpuTimeLimit: 2000,      // ms: CPU time budget enforced across the process group
   memory:   '256MB',       // memory bound (backend-dependent)
   network:  'disabled',    // 'disabled' | 'allow' | 'proxy'
+  // RFC 0006: apply OS-level filesystem isolation when the backend supports it
+  // (Linux + Landlock). Defaults to true when supported; false is an explicit,
+  // documented opt-out, never a silent downgrade.
+  osFilesystemIsolation: true,
 });
 ```
 
@@ -49,6 +53,7 @@ const caps = sandbox.capabilities;
 //   cpuLimits: true,
 //   memoryLimits: true,
 //   streaming: true,
+//   osFilesystemIsolation: 'supported',   // 'supported' | 'unsupported' | 'unknown' (RFC 0006)
 //   remoteExecution: false
 // }
 ```
@@ -63,6 +68,22 @@ const caps = sandbox.capabilities;
 | Other    | Unsupported (falls back to timeout) | Unsupported (falls back to timeout) |
 
 On Windows a child that detaches from the process tree can escape accounting; Linux/macOS cover pipelines, background jobs, and chained `sh -c` children. The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend. Windows sampling uses `Get-CimInstance Win32_Process` (the replacement for the removed WMIC utility) and is verified in CI on `windows-latest`.
+
+### OS-level filesystem isolation (RFC 0006)
+
+`osFilesystemIsolation` is a tri-state capability (`'supported'` | `'unsupported'` | `'unknown'`) reporting whether the executing process tree is confined to the sandbox workspace plus a minimal read-only runtime allowlist (interpreter, shared libraries, loader, config, zoneinfo). This is a different guarantee from the `filesystem` capability (which describes the VFS boundary) and from `networkIsolation` (RFC 0004).
+
+```ts
+if (sandbox.capabilities.osFilesystemIsolation === 'supported') {
+  // The workload cannot read or write outside its workspace except the
+  // runtime paths it needs to execute. Escapes E1-E10 are covered by tests.
+}
+```
+
+- **How it works (Linux)**: each execution runs through a Landlock confinement runner launched behind `unshare --user --map-root-user` (needed for the unprivileged `CAP_SYS_ADMIN`). The runner applies an irrevocable ruleset (workspace full access, runtime allowlist read/exec, everything else denied) and then execs the workload. `unknown` and `unsupported` mean no OS-filesystem confinement is enforced: treat them as ambient host rights.
+- **Opt-out**: `Sandbox.create({ osFilesystemIsolation: false })` disables the mechanism for that sandbox even when supported. This is an explicit, documented opt-out (e.g. workloads that need `npm` or arbitrary host binaries), never a silent downgrade.
+- **Platforms**: Linux with Landlock ABI >= 2 and unprivileged user namespaces reports `supported`; macOS reports `unknown` (Seatbelt filesystem profile is pending validation); Windows and others report `unsupported`.
+- **Residuals**: `/proc` and `/sys` are not hidden by Landlock (path-based mechanism). Runtime allowlist and residuals are documented in `rfcs/0006-os-filesystem-isolation.md`.
 
 ### `sandbox.backendName`
 

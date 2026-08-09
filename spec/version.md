@@ -12,6 +12,16 @@ The Palmshed Sandbox specification follows Semantic Versioning (MAJOR.MINOR.PATC
 
 ## Specification Changelog
 
+### Unreleased (backward-compatible additions to the frozen 1.0.0 contract)
+
+`osFilesystemIsolation` is an **optional capability extension** to the frozen
+1.0.0 specification. Its presence does not change the 1.0.0 contract and does
+not require a version bump. The capability is reported (never assumed) as a
+tri-state string, and backends that cannot provide OS-level filesystem
+isolation simply report `unsupported` or `unknown`. If the capability later
+changes the core execution contract or becomes mandatory, that warrants a
+version change per the SemVer rules above.
+
 ### v1.0.0 (Frozen runtime contract)
 - Frozen the runtime contract: JSON schemas (`sandbox.schema.json`, `exec.schema.json`, `filesystem.schema.json`, `capabilities.schema.json`) are stable at v1.0.0. Subsequent changes follow SemVer and the 6-month deprecation policy (`compatibility.md`, `deprecations.md`).
 - `capabilities.schema.json`: corrected the required field list (`networkIsolation`, previously mistyped as `network isolation`).

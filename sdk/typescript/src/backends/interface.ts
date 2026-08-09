@@ -1,5 +1,8 @@
 import { ExecOptions, ExecResult, SandboxOptions } from '../core/types.js';
 
+/** RFC 0006 OS-level filesystem isolation tri-state (spec/capabilities.schema.json). */
+export type OsFilesystemIsolationStatus = 'supported' | 'unsupported' | 'unknown';
+
 export interface BackendCapabilities {
   filesystem: boolean;
   networkIsolation: boolean;
@@ -7,6 +10,8 @@ export interface BackendCapabilities {
   memoryLimits: boolean;
   streaming: boolean;
   remoteExecution?: boolean;
+  /** RFC 0006: whether the executed process tree is confined to the workspace + runtime allowlist. */
+  osFilesystemIsolation?: OsFilesystemIsolationStatus;
 }
 
 export interface BackendEngine {

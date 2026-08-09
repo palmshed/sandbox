@@ -1,7 +1,7 @@
 # RFC 0006: OS-Level Filesystem Isolation
 
 - **Author**: Palmshed Team
-- **Status**: Draft (awaiting implementation validation)
+- **Status**: Implemented (capability probe + Native backend confinement + escape suite; CI validation of the Linux Landlock chain pending). `supported` is only ever reported at runtime on hosts where the mechanism passes the adversarial tests
 - **Created**: 2026-08-09
 - **Specifies**: new capability `osFilesystemIsolation` (`spec/capabilities.schema.json`); interacts with the existing VFS boundary (RFC 0003) and `network: 'disabled'` (RFC 0004)
 

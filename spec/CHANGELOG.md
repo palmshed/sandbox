@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## Unreleased
+
+### Added (optional extension, no version bump)
+
+- `osFilesystemIsolation` capability in `capabilities.schema.json` (RFC 0006): a tri-state string (`supported` | `unsupported` | `unknown`) reporting whether the executed process tree is confined to the sandbox workspace plus a minimal read-only runtime allowlist. It is an **optional capability extension** to the frozen 1.0.0 contract: its presence does not change the 1.0.0 contract or require a version bump (`spec/version.md`). The capability is reported, never assumed; backends that cannot provide OS-level filesystem isolation report `unsupported` or `unknown`.
+- `osFilesystemIsolation` boolean option in `sandbox.schema.json`: opt-out gate (defaults to true when the mechanism is supported) for applying OS-level filesystem isolation.
+
+---
+
 ## [1.0.0] - 2026-08-09
 
 ### Changed

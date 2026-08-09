@@ -59,7 +59,7 @@ export default {
 
     let sandbox;
     try {
-      sandbox = await ctx.sandbox({ network: 'disabled', timeout: 30000 });
+      sandbox = await ctx.sandbox({ network: 'disabled', timeout: 30000, osFilesystemIsolation: false });
 
       // Phase 1: checkout (upload the project tree).
       let st = ctx.step('checkout');

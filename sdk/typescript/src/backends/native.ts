@@ -3,7 +3,7 @@ import * as fs from 'fs/promises';
 import * as fssync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { BackendEngine } from './interface.js';
+import { BackendCapabilities, BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError } from '../core/types.js';
 import { logDebug } from '../core/log.js';
 import {
@@ -17,6 +17,8 @@ import {
   cleanupSandboxSync,
   removeSandboxDir,
 } from '../core/crashRecovery.js';
+import { probeOsFilesystemIsolation, OsFilesystemProbe } from '../osfs/confinement.js';
+import { deriveRuntimeAllowlist } from '../osfs/allowlist.js';
 
 /**
  * Read the current Windows process table via PowerShell CIM (the replacement
@@ -62,12 +64,13 @@ function readWindowsProcessTable(
 
 export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
-  public readonly capabilities = {
+  public readonly capabilities: BackendCapabilities = {
     filesystem: true,
     networkIsolation: true,  // Probed at init: true if unshare --user works (macOS: sandbox-exec always available); false on Linux CI where user namespaces are restricted, and false on Windows (unsupported)
     cpuLimits: true,
     memoryLimits: true,
     streaming: true,
+    osFilesystemIsolation: 'unknown',  // RFC 0006 tri-state: supported/unsupported/unknown, probed at init (Linux + Landlock)
     remoteExecution: false,
   };
   private sandboxDir: string = '';
@@ -78,6 +81,8 @@ export class NativeBackend implements BackendEngine {
   private activeProcesses = new Set<ChildProcess>();
   /** Whether Linux unshare --user network namespace creation succeeded at init */
   private networkIsolationAvailable = true;
+  /** RFC 0006 confined-execution state, filled by the init-time probe */
+  private osfs: OsFilesystemProbe | null = null;
   /** Crash-recovery exit/signal cleanup bound to this instance (RFC 0005) */
   private crashCleanup: (() => void) | null = null;
 
@@ -148,9 +153,24 @@ export class NativeBackend implements BackendEngine {
       this.capabilities.networkIsolation = false;
     }
 
+    // RFC 0006: probe OS-level filesystem isolation. On Linux this compiles the
+    // embedded Landlock trampoline, derives a runtime allowlist, and runs a
+    // real confined self-test, yielding a tri-state result. Other platforms are
+    // reported without a probe: macOS -> unknown (Seatbelt pending validation),
+    // Windows/others -> unsupported.
+    if (process.platform === 'linux') {
+      this.osfs = probeOsFilesystemIsolation();
+      this.capabilities.osFilesystemIsolation = this.osfs.status;
+    } else if (process.platform === 'darwin') {
+      this.capabilities.osFilesystemIsolation = 'unknown';
+    } else {
+      this.capabilities.osFilesystemIsolation = 'unsupported';
+    }
+
     logDebug('backend.init', {
       backend: this.name,
       networkIsolation: this.capabilities.networkIsolation,
+      osFilesystemIsolation: this.capabilities.osFilesystemIsolation,
       timeout: options.timeout ?? null,
       memory: options.memory ?? null,
       cpuTimeLimit: options.cpuTimeLimit ?? null,
@@ -414,7 +434,41 @@ export class NativeBackend implements BackendEngine {
       let spawnShell = shell;
       let spawnArgs: string[];
 
-      if (this.options.network === 'disabled') {
+      // RFC 0006: OS-level filesystem isolation via the Landlock confinement
+      // runner. Enabled when the init-time probe reported `supported` and the
+      // sandbox did not explicitly opt out. landlock_restrict_self needs
+      // CAP_SYS_ADMIN, which an unprivileged process only holds inside a fresh
+      // user namespace, so the chain always starts `unshare --user
+      // --map-root-user`; `-n` is added only when network isolation is also
+      // being enforced. The runner grants the workspace full access and the
+      // derived runtime allowlist read/exec rights, then execs the workload.
+      const osfsConfined =
+        process.platform === 'linux' &&
+        !isWin &&
+        this.capabilities.osFilesystemIsolation === 'supported' &&
+        this.options.osFilesystemIsolation !== false &&
+        this.osfs !== null &&
+        this.osfs.runnerPath !== undefined &&
+        this.osfs.allowlistFile !== undefined;
+
+      if (osfsConfined) {
+        const networkFlag =
+          this.options.network === 'disabled' && this.networkIsolationAvailable ? ['-n'] : [];
+        spawnShell = 'unshare';
+        spawnArgs = [
+          ...networkFlag,
+          '--user',
+          '--map-root-user',
+          '--',
+          this.osfs!.runnerPath!,
+          this.sandboxRealDir,
+          this.osfs!.allowlistFile!,
+          '--',
+          '/bin/sh',
+          '-c',
+          command,
+        ];
+      } else if (this.options.network === 'disabled') {
         if (process.platform === 'linux') {
           if (this.networkIsolationAvailable) {
             spawnShell = '/bin/sh';

@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { BackendEngine } from './interface.js';
+import { BackendCapabilities, BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions } from '../core/types.js';
 import { logDebug } from '../core/log.js';
 
@@ -14,12 +14,13 @@ export class DockerBackend implements BackendEngine {
   // `disabled` are unhandled. cpuLimits/memoryLimits/networkIsolation are
   // therefore reported `false` (reserved: backend-parity work item #4) until
   // Docker resource/network enforcement is implemented and integration-tested.
-  public readonly capabilities = {
+  public readonly capabilities: BackendCapabilities = {
     filesystem: true,
     networkIsolation: false,
     cpuLimits: false,
     memoryLimits: false,
     streaming: true,
+    osFilesystemIsolation: 'unsupported', // RFC 0006: Docker backend does not apply Landlock confinement
     remoteExecution: false,
   };
   private containerId: string = '';

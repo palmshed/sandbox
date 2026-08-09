@@ -99,7 +99,7 @@ export default {
       let sandbox;
       try {
         // Phase 1: create + upload repository (checkout).
-        sandbox = await ctx.sandbox({ network: 'disabled', timeout: 30000 });
+        sandbox = await ctx.sandbox({ network: 'disabled', timeout: 30000, osFilesystemIsolation: false });
         let st = ctx.step('upload');
         await sandbox.uploadFile(path.join(repoDir, 'package.json'), 'package.json');
         await sandbox.uploadFile(path.join(repoDir, 'src', 'calc.mjs'), 'src/calc.mjs');

@@ -6,12 +6,24 @@
  * unit/integration/stress suite. CI (ci.yml build-and-test and node-lts) and
  * `npm run preflight` invoke this same script.
  */
-import { SDK_DIR, ensureNpmInstall, npmRun, nodeTestCounts, Reporter } from './lib/preflight-lib.mjs';
+import * as path from 'path';
+import { SDK_DIR, REPO_ROOT, ensureNpmInstall, npmRun, nodeTestCounts, run, Reporter } from './lib/preflight-lib.mjs';
 
 const report = new Reporter();
 
 function main() {
   const typecheckOnly = process.argv.includes('--typecheck-only');
+
+  // RFC 0006: the embedded Landlock runner source (landlockRunnerSource.ts)
+  // must stay byte-identical to scripts/probes/landlock-run.c. Regenerate with
+  // `node scripts/gen-osfs-source.mjs`; this gate catches drift on every OS CI.
+  const drift = run(process.execPath, [path.join(REPO_ROOT, 'scripts', 'gen-osfs-source.mjs'), '--check'], { cwd: REPO_ROOT });
+  report.check(
+    'OSFS runner source drift',
+    drift.ok,
+    drift.ok ? '' : drift.stderr.trim().split('\n').slice(-1)[0]
+  );
+  if (!drift.ok) process.exit(report.finish());
 
   const install = ensureNpmInstall(SDK_DIR, 'typescript');
   if (!install.ok) {
