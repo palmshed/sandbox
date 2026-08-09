@@ -130,14 +130,14 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 > **Goal**: Make untrusted execution verifiably safe against adversarial workloads.
 
 > **Status**: Complete for the **v1.0 scope** (2026-08-08). The v1.0 guarantee is *soft process isolation with a hardened virtual filesystem boundary*; host-filesystem isolation is explicitly **not** part of the v1.0 guarantee. The residual hardening items are deferred **post-v1.0** (RFC 0003, `SECURITY.md`):
-> - **OS-level filesystem isolation** for the Native backend (chroot / mount namespaces / Seatbelt FS rules): post-v1.0 (issue `#3`)
+> - **OS-level filesystem isolation** for the Native backend (chroot / mount namespaces / Seatbelt FS rules): post-v1.0 (issue `#3`; design recorded in RFC 0006)
 > - **Windows network isolation**: unsupported (RFC 0004; no unprivileged mechanism)
 > - **Docker resource/network enforcement**: deferred, capability flags remain `false` (issue `#4`)
 > - **Hard `cpuQuota`**: experimental, not enforced by the Native backend (kept for future hard-quota design)
 
 - [x] **CPU Hardening**: Infinite loops, runaway processes, strict timeout enforcement (CPU time budget enforced; hard core quota deferred post-v1.0)
 - [x] **Memory Hardening**: Large allocations, OOM handling, cleanup after process kill
-- [x] **Filesystem Hardening**: VFS boundary v0.1.2 (traversal / absolute-path / symlink-escape rejection, `workDir` containment, exec-path disk quota with rollback); OS-level isolation deferred post-v1.0
+- [x] **Filesystem Hardening**: VFS boundary v0.1.2 (traversal / absolute-path / symlink-escape rejection, `workDir` containment, exec-path disk quota with rollback); OS-level isolation deferred post-v1.0 (design recorded in RFC 0006, issue `#3`)
 - [x] **Process Hardening**: Recursive child process cleanup, signal handling, forced termination
 
 **Success Criteria**: A malicious or broken workload cannot escape or degrade the host environment (within the documented v1.0 boundary).
