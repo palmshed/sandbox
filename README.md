@@ -69,6 +69,28 @@ See [AGENTS.md](AGENTS.md) for full architectural guidelines and specification r
 
 ---
 
+## Development & Verification
+
+The repository uses a shared preflight and verification pipeline
+(`scripts/`), the same scripts CI runs:
+
+- **`npm run preflight:quick`** - fast developer feedback (git state, prose
+  punctuation, required READMEs, SDK typecheck).
+- **`npm run preflight`** - full deterministic gate: SDK build/typecheck/tests,
+  compliance/TCK, repro laboratory, examples, consumer test, JSON-schema
+  validation, docs, workflows, package tarball, and git state.
+- **`npm run preflight:release`** - preflight plus the release-readiness gate
+  (SDK version == spec version == git tag, CHANGELOG entry).
+- **`npm run production:validate`** - builds, packs, and installs the release
+  artifact, then runs the production scenario suite and a soak smoke against
+  the packed package (never the workspace build). This is the release
+  confidence gate CI runs on the Ubuntu/macOS/Windows matrix.
+
+Run the production suite alone with `node production/run.mjs` (`--list`,
+`--only <ids>`, `--verbose`); see [`production/README.md`](production/README.md).
+
+---
+
 ## Debug Logging (`SANDBOX_LOG=debug`)
 
 Set `SANDBOX_LOG=debug` to emit lifecycle and resource-enforcement events to

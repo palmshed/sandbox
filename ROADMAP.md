@@ -207,6 +207,15 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 > residue detection, seven consumer-workflow scenarios, and a soak driver; CI
 > wires it against the packed npm tarball on the 3-OS matrix (`production.yml`)
 > with nightly soak and an exact-version gate (`scheduled-tests.yml`).
+> **Validation recorded 2026-08-09**: Production Validation 7/7 scenarios +
+> soak smoke passed against the packed artifact on the Ubuntu/macOS/Windows
+> matrix in the same session (run `31319381753`). The suite surfaced and the
+> session fixed three Windows-only bugs that the 44-test SDK suite missed:
+> a single-shot `fs.rm` destroy race (retried removal + unregister in
+> `finally`), a registry-entry resurrection on destroy (serialized pgid writes
+> awaited by unregister), and quadratic reaping on Windows (host start-token
+> cached per PID; O(n²) PowerShell spawns per reap eliminated). A
+> path-separator portability bug in the `resilience` scenario was also fixed.
 
 - [x] **Runner (`production/run.mjs`)**: scenario discovery, per-scenario timing
       budgets, step timing, `--list` / `--only` / `--verbose`, summary table,
