@@ -190,6 +190,78 @@ function killWorkloadRoot(pgid: number): void {
   }
 }
 
+let windowsProcessCache: { fetchedAt: number; rows: Array<[number, number]> } | null = null;
+
+/**
+ * Snapshot the Windows process table as [pid, ppid] pairs. Cached briefly so a
+ * single reap sweep with several stale sandboxes only pays for one PowerShell
+ * invocation.
+ */
+function windowsProcessRows(): Array<[number, number]> {
+  if (windowsProcessCache && Date.now() - windowsProcessCache.fetchedAt < 2000) {
+    return windowsProcessCache.rows;
+  }
+  const rows: Array<[number, number]> = [];
+  try {
+    const script = 'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId),$($_.ParentProcessId)" }';
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    const out = execSync(`powershell -NoProfile -NonInteractive -EncodedCommand ${encoded}`, {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 15000,
+      windowsHide: true,
+    }).toString();
+    for (const line of out.split('\n')) {
+      const parts = line.trim().split(',');
+      const pid = parseInt(parts[0], 10);
+      const ppid = parseInt(parts[1], 10);
+      if (!Number.isNaN(pid)) rows.push([pid, Number.isNaN(ppid) ? -1 : ppid]);
+    }
+  } catch {
+    // process table unavailable
+  }
+  windowsProcessCache = { fetchedAt: Date.now(), rows };
+  return rows;
+}
+
+/**
+ * Kill every process reachable from `roots` via the parent chain (Windows).
+ *
+ * On POSIX the workload is a process group, so killing the group leader also
+ * catches backgrounded descendants. Windows has no process groups: the SDK
+ * records only the top-level spawned pid, and that root can die early while
+ * its children keep running, orphaned, with the sandbox dir as their cwd
+ * (which then locks the directory and defeats deletion). Enumerating the
+ * parent chain from the recorded roots finds those orphans even when the
+ * recorded root itself is already gone, because children keep reporting the
+ * dead parent's pid.
+ */
+function windowsKillProcessTree(roots: number[]): void {
+  const aliveRoots = roots.filter((p) => Number.isInteger(p));
+  if (aliveRoots.length === 0) return;
+  const rows = windowsProcessRows();
+  const children = new Map<number, number[]>();
+  for (const [pid, ppid] of rows) {
+    const list = children.get(ppid);
+    if (list) list.push(pid);
+    else children.set(ppid, [pid]);
+  }
+  const targets = new Set<number>();
+  const queue = [...aliveRoots];
+  while (queue.length > 0) {
+    const pid = queue.shift()!;
+    if (targets.has(pid)) continue;
+    targets.add(pid);
+    for (const child of children.get(pid) ?? []) queue.push(child);
+  }
+  for (const pid of targets) {
+    try {
+      execSync(`taskkill /pid ${pid} /F`, { stdio: 'ignore' });
+    } catch {
+      // already gone
+    }
+  }
+}
+
 const RM_RETRY_INTERVAL_MS = 100;
 const RM_MAX_WAIT_MS = 15000;
 
@@ -337,6 +409,9 @@ export async function reapStaleSandboxes(skipDir?: string): Promise<number> {
     for (const pgid of entry.pgids) {
       if (Number.isInteger(pgid)) killWorkloadRoot(pgid);
     }
+    if (process.platform === 'win32') {
+      windowsKillProcessTree(entry.pgids);
+    }
     await removeSandboxDir(entry.dir);
     await removeEntry(entry.dir);
     reaped++;
@@ -388,8 +463,12 @@ export async function reapStaleSandboxes(skipDir?: string): Promise<number> {
  * Kills every recorded workload root and removes the sandbox directory.
  */
 export function cleanupSandboxSync(sandboxDir: string, workloadRoots: Iterable<number>): void {
-  for (const pid of workloadRoots) {
+  const roots = [...workloadRoots];
+  for (const pid of roots) {
     if (Number.isInteger(pid)) killWorkloadRoot(pid);
+  }
+  if (process.platform === 'win32') {
+    windowsKillProcessTree(roots);
   }
   if (sandboxDir) {
     removeSandboxDirSync(sandboxDir);
