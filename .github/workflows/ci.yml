@@ -10,6 +10,9 @@ permissions:
   contents: read
 
 jobs:
+  # Primary runtime line (Node 20) across all OSes. Runs the SAME scripts as
+  # `npm run preflight` (scripts/verify-*.mjs), so a green local preflight
+  # predicts a green CI run.
   build-and-test:
     name: build-and-test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -25,25 +28,17 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'sdk/typescript/package-lock.json'
 
-      - name: Install SDK Dependencies
-        run: cd sdk/typescript && npm ci
+      - name: Verify SDK (deps, typecheck, build, unit & stress tests)
+        run: node scripts/verify-sdk.mjs
 
-      - name: Build TypeScript Reference SDK
-        run: cd sdk/typescript && npm run build
-
-      - name: Run SDK Unit & Stress Tests
-        run: cd sdk/typescript && npm test
-
-      - name: Run Compliance Suite & TCK
-        shell: bash
-        run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js
+      - name: Verify Compliance Suite & TCK
+        run: node scripts/verify-conformance.mjs
 
       # Repro laboratory: network repros auto-skip when networkIsolation is
       # unavailable on the host (Windows, or Linux CI where unprivileged user
       # namespaces are restricted). On macOS they assert full RFC 0004 isolation.
-      - name: Run Repro Laboratory
-        shell: bash
-        run: node repro/run.js
+      - name: Verify Repro Laboratory
+        run: node scripts/verify-repro.mjs
 
   # Supported Node.js runtime matrix (LTS versions). The package declares
   # "engines": { "node": ">=20" }; 20 (Iron) and 22 (Jod) are the maintained
@@ -66,15 +61,5 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'sdk/typescript/package-lock.json'
 
-      - name: Install SDK Dependencies
-        run: cd sdk/typescript && npm ci
-
-      - name: Build TypeScript Reference SDK
-        run: cd sdk/typescript && npm run build
-
-      - name: Run SDK Unit & Stress Tests
-        run: cd sdk/typescript && npm test
-
-      - name: Run Compliance Suite & TCK
-        shell: bash
-        run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js
+      - name: Verify SDK (deps, typecheck, build, unit & stress tests)
+        run: node scripts/verify-sdk.mjs

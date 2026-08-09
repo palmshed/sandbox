@@ -1,0 +1,37 @@
+{
+  "name": "palmshed-sandbox",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Repository preflight and verification scripts for palmshed/sandbox. CI and local preflight share these scripts so a green local run predicts a green repository-level gate.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm --prefix sdk/typescript run build",
+    "typecheck": "npm --prefix sdk/typescript run typecheck",
+    "docs": "npm --prefix sdk/typescript run docs",
+    "test": "npm --prefix sdk/typescript test",
+    "hooks:install": "./scripts/install-hooks",
+    "verify:sdk": "node scripts/verify-sdk.mjs",
+    "verify:conformance": "node scripts/verify-conformance.mjs",
+    "verify:repro": "node scripts/verify-repro.mjs",
+    "verify:schemas": "node scripts/verify-schemas.mjs",
+    "verify:docs": "node scripts/verify-docs.mjs",
+    "verify:punctuation": "node scripts/punctuation-check.mjs",
+    "verify:workflows": "node scripts/verify-workflows.mjs",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify:examples": "node scripts/verify-examples.mjs",
+    "verify:consumer": "node scripts/verify-consumer.mjs",
+    "verify:gitstate": "node scripts/verify-gitstate.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
+    "production:validate": "node scripts/production-validate.mjs",
+    "preflight:quick": "node scripts/preflight.mjs --mode quick",
+    "preflight": "node scripts/preflight.mjs",
+    "preflight:release": "node scripts/preflight.mjs --mode release"
+  },
+  "devDependencies": {
+    "ajv": "^8.17.1",
+    "yaml": "^2.8.0"
+  }
+}

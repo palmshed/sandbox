@@ -17,10 +17,14 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
+      # Same script as `npm run preflight`; installs deps, typechecks, builds,
+      # and runs the SDK unit/stress suite.
       - name: Build & Run SDK Test Suite
-        run: cd sdk/typescript && npm ci && npm test
+        run: node scripts/verify-sdk.mjs
 
   # Nightly (cron 3am) sustained soak against the packed release artifact.
+  # Uses the same entry point as production.yml and `npm run production:validate`,
+  # with a longer soak window.
   nightly-soak:
     if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * *'
     runs-on: ubuntu-latest
@@ -29,19 +33,16 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
-      - name: Build SDK
-        run: cd sdk/typescript && npm ci && npm run build
-      - name: Pack and install release artifact
-        shell: bash
-        run: |
-          PACKFILE=$(cd sdk/typescript && npm pack --silent | tail -n 1)
-          npm install --no-save "./sdk/typescript/$PACKFILE"
-      - name: Nightly soak (5 min, 25 sandboxes)
-        run: node production/soak/soak.mjs --minutes 5 --sandboxes 25 --verbose
+      - name: Nightly soak (5 min, 25 sandboxes) against packed artifact
+        run: node scripts/production-validate.mjs --soak-only --verbose
+        env:
+          PRODUCTION_SOAK_MINUTES: '5'
+          PRODUCTION_SOAK_SANDBOXES: '25'
 
-  # Nightly exact-version gate: the packed artifact installed and exercised by
-  # the production suite must report exactly the version declared in
-  # spec/version.md. A drift here means spec-first governance was bypassed.
+  # Nightly exact-version gate: the packaged version and spec/version.md must
+  # match exactly, and a matching git tag must exist. Drift here means
+  # spec-first governance was bypassed. Runs the same script as the release
+  # pipeline version gate.
   nightly-version-gate:
     if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * *'
     runs-on: ubuntu-latest
@@ -50,23 +51,5 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
-      - name: Build SDK
-        run: cd sdk/typescript && npm ci && npm run build
-      - name: Pack and install release artifact
-        shell: bash
-        run: |
-          PACKFILE=$(cd sdk/typescript && npm pack --silent | tail -n 1)
-          npm install --no-save "./sdk/typescript/$PACKFILE"
-      - name: Verify exact version alignment (package vs spec)
-        run: |
-          PKG_VERSION=$(node -e "console.log(require('@palmshed/sandbox/package.json').version)")
-          SPEC_VERSION=$(sed -nE 's/^Current Specification Version: \*\*([^*]+)\*\*/\1/p' spec/version.md)
-          echo "package=$PKG_VERSION spec=$SPEC_VERSION"
-          if [ "$PKG_VERSION" != "$SPEC_VERSION" ]; then
-            echo "version drift: package $PKG_VERSION does not match spec $SPEC_VERSION" >&2
-            exit 1
-          fi
-          if ! git tag --list "v$PKG_VERSION" | grep -q "v$PKG_VERSION"; then
-            echo "tag v$PKG_VERSION missing; package version must be tagged" >&2
-            exit 1
-          fi
+      - name: Verify exact version alignment (package vs spec vs tag)
+        run: node scripts/verify-release.mjs --check-tag-exists

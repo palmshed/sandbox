@@ -34,27 +34,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build SDK
-        run: cd sdk/typescript && npm ci && npm run build
-
-      # The examples import the '@palmshed/sandbox' package name, so they must
-      # run against the packed release artifact, not the workspace build. npm
-      # install copies the tarball into the repo-root node_modules (a real
-      # install, not a symlink), so resolution matches an external consumer.
-      - name: Pack and install SDK artifact
-        shell: bash
-        run: |
-          PACKFILE=$(cd sdk/typescript && npm pack --silent | tail -n 1)
-          npm install --no-save --no-audit --no-fund --omit=dev "./sdk/typescript/$PACKFILE"
-
-      - name: Run Quickstart example
-        run: node examples/quickstart.mjs
-
-      - name: Run AI Agent Runner example
-        run: node examples/ai-agent-runner.mjs
-
-      - name: Run Code Evaluator example
-        run: node examples/code-evaluator.mjs
-
-      - name: Run CI Runner example
-        run: node examples/ci-runner.mjs
+      # Same script as `npm run preflight`. Builds, packs, and installs the
+      # release artifact into the repo-root node_modules, then runs all four
+      # examples against the packed package (never the workspace build).
+      - name: Run examples against packed artifact
+        run: node scripts/verify-examples.mjs

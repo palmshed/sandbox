@@ -35,27 +35,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Build SDK
-        run: npm ci
-        working-directory: sdk/typescript
-
-      - name: Build TypeScript
-        run: npm run build
-        working-directory: sdk/typescript
-
-      # The production suite validates the packed artifact a consumer installs,
-      # never the workspace build.
-      - name: Pack and install release artifact
-        shell: bash
-        run: |
-          PACKFILE=$(cd sdk/typescript && npm pack --silent | tail -n 1)
-          npm install --no-save "./sdk/typescript/$PACKFILE"
-          node -e "const p=require('@palmshed/sandbox/package.json'); console.log('installed @palmshed/sandbox v'+p.version)"
-
-      - name: Run production validation suite
-        shell: bash
-        run: node production/run.mjs
-
-      - name: Quick soak smoke (2 min)
-        shell: bash
-        run: node production/soak/soak.mjs --minutes 2 --sandboxes 5
+      # Same script as `npm run production:validate`. Builds, packs, and
+      # installs the release artifact, runs the full production scenario suite
+      # against the packed package (never the workspace build), then runs a
+      # soak smoke.
+      - name: Validate packed artifact (production suite + soak)
+        run: node scripts/production-validate.mjs
+        env:
+          PRODUCTION_SOAK_MINUTES: '2'
+          PRODUCTION_SOAK_SANDBOXES: '5'

@@ -25,9 +25,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'sdk/typescript/package-lock.json'
 
-      - name: Build SDK
-        run: cd sdk/typescript && npm ci && npm run build
-
+      # Same script as `npm run preflight`; installs SDK deps, builds, and runs
+      # the compliance + TCK suites.
       - name: Verify Specification & Compliance Contract
-        shell: bash
-        run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js
+        run: node scripts/verify-conformance.mjs

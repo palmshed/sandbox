@@ -48,7 +48,21 @@ sandbox/
 │   └── python/            # Phase 3 Python SDK (AI agent frameworks)
 ├── scripts/
 │   ├── punctuation-check.mjs  # CI: hard-fail on Unicode em dash in prose; warn-only on prose --
-│   └── probes/            # Capability probes (network isolation measurement)
+│   ├── preflight.mjs          # Repo preflight orchestrator (quick | normal | release modes)
+│   ├── production-validate.mjs# Packed-artifact production suite + soak smoke (npm run production:validate)
+│   ├── verify-sdk.mjs         # SDK gate: deps, typecheck, build, unit & stress tests
+│   ├── verify-conformance.mjs # Compliance suite + TCK gate
+│   ├── verify-repro.mjs       # Repro laboratory gate
+│   ├── verify-examples.mjs    # Examples vs packed artifact gate
+│   ├── verify-consumer.mjs    # Isolated consumer test gate (run.sh + fixture restore)
+│   ├── verify-schemas.mjs     # spec/ JSON schema validation (ajv + $ref resolution)
+│   ├── verify-docs.mjs        # Required READMEs + Typedoc API reference gate
+│   ├── verify-workflows.mjs   # GitHub Actions workflow structural validation
+│   ├── verify-package.mjs     # npm pack --dry-run tarball-content gate
+│   ├── verify-gitstate.mjs    # git repository + generated-artifact tracking checks
+│   ├── verify-release.mjs     # Version gate (tag == SDK == spec) + CHANGELOG
+│   ├── lib/preflight-lib.mjs  # Shared helpers (run, install, artifact, counts, Reporter)
+│   └── probes/                # Capability probes (network isolation measurement)
 ├── compliance/            # Cross-SDK & Backend conformance test suites
 │   ├── sdk/               # SDK behavior verification
 │   ├── backends/          # Backend engine contract tests
@@ -129,6 +143,10 @@ gh api -X PATCH gists/e2a499783be6d2b9de4dd7cf4f34ee7d --input <payload>.json
 
 ## Build & Conformance Commands
 
+- **Preflight (quick)**: `npm run preflight:quick` (developer feedback in seconds; git state, punctuation, READMEs, SDK typecheck)
+- **Preflight (normal)**: `npm run preflight` (everything deterministic: SDK, compliance/TCK, repro, examples, consumer, punctuation, schemas, docs, workflows, package, git state; same scripts CI runs)
+- **Preflight (release)**: `npm run preflight:release` (normal + release-readiness version gate + clean working tree)
+- **Production Validation Suite**: `npm run production:validate` (build + pack + install the release artifact, then run `production/run.mjs` and a soak smoke against the packed package, never the workspace build)
 - **Build TypeScript Reference SDK**: `cd sdk/typescript && npm run build`
 - **TypeScript Unit, Integration & Stress Tests**: `cd sdk/typescript && npm test`
 - **Run Conformance Suite & TCK**: `node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js`

@@ -28,16 +28,13 @@ jobs:
         with:
           node-version: '20'
 
-      # run.sh builds the SDK from source, which requires its dependencies.
-      # (Previously this relied on accidentally-committed node_modules.)
-      - name: Install SDK Dependencies
-        run: cd sdk/typescript && npm ci
-
-      # Reproducible: build + pack + install-from-tarball + verify.
-      # The packed artifact version is resolved dynamically by run.sh, so
-      # version bumps never break this fixture.
+      # Same script as `npm run preflight`. run.sh builds, packs, installs
+      # from tarball into an isolated consumer project, and verifies against
+      # the packed artifact (never the workspace source). The version is
+      # resolved dynamically, so version bumps never break this fixture. The
+      # script restores the consumer fixture files afterward.
       - name: Run isolated consumer integration test (tarball)
-        run: bash examples/consumer-test/run.sh
+        run: node scripts/verify-consumer.mjs
 
   # Phase 1: verify installation directly from the npm registry (not a local
   # tarball). This checks that the published package is installable and that

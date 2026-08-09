@@ -25,73 +25,20 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'sdk/typescript/package-lock.json'
 
+      - name: Install repo dev dependencies (preflight scripts)
+        run: npm ci
+
+      # Same script as `npm run preflight:release`. On a tag push HEAD is the
+      # tag, so the version gate verifies tag == SDK package == spec version,
+      # the CHANGELOG entry, and release-readiness docs.
       - name: Version Validation Gate (Tag vs SDK vs Spec Compatibility)
-        id: version_gate
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          TAG_VERSION="${TAG#v}"
-          PKG_VERSION=$(node -p "require('./sdk/typescript/package.json').version")
-          SPEC_VERSION=$(grep -oE '[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?' spec/version.md | head -n 1)
+        run: node scripts/verify-release.mjs
 
-          echo "Tag Version:          $TAG_VERSION"
-          echo "TypeScript SDK:       $PKG_VERSION"
-          echo "Runtime Spec Version: $SPEC_VERSION"
-
-          # 1. Validate Tag SemVer Format
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-            echo "::error::Invalid SemVer tag format: $TAG"
-            exit 1
-          fi
-
-          # 2. Exact Match: Tag Version ↔ SDK Version
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "::error::Git tag version ($TAG_VERSION) does not match sdk/typescript package version ($PKG_VERSION)"
-            exit 1
-          fi
-
-          # 3. Spec Compatibility Check (SDK major.minor must not exceed Spec major.minor)
-          SDK_MAJOR_MINOR=$(echo "$PKG_VERSION" | cut -d. -f1-2)
-          SPEC_MAJOR_MINOR=$(echo "$SPEC_VERSION" | cut -d. -f1-2)
-          if [ "$SDK_MAJOR_MINOR" != "$SPEC_MAJOR_MINOR" ]; then
-            echo "::error::SDK major.minor ($SDK_MAJOR_MINOR) is incompatible with runtime spec ($SPEC_MAJOR_MINOR)"
-            exit 1
-          fi
-
-      - name: Install & Build TS SDK
-        run: cd sdk/typescript && npm ci && npm run build
-
-      - name: Run Unit Tests
-        run: cd sdk/typescript && npm test
-
-      - name: Run Compliance Suite & TCK
-        run: node --test compliance/sdk/*.test.js compliance/backends/*.test.js tck/*/*.test.js
-
-      - name: Verify npm package contents (pack --dry-run)
-        run: |
-          cd sdk/typescript
-          npm pack --dry-run --json | node -e "
-            let d = '';
-            process.stdin.on('data', (c) => { d += c; });
-            process.stdin.on('end', () => {
-              const pack = JSON.parse(d)[0];
-              const paths = pack.files.map((f) => f.path);
-              const required = ['package.json', 'dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE'];
-              for (const r of required) {
-                if (!paths.includes(r)) {
-                  console.error('missing from tarball: ' + r);
-                  process.exit(1);
-                }
-              }
-              const forbidden = [/^dist\/test\//, /typedoc/];
-              for (const p of paths) {
-                if (forbidden.some((re) => re.test(p))) {
-                  console.error('unexpected file in tarball: ' + p);
-                  process.exit(1);
-                }
-              }
-              console.log('tarball contents OK: ' + pack.entryCount + ' files, ' + pack.size + ' bytes');
-            });
-          "
+      # Full deterministic repository gate: SDK, compliance/TCK, repro,
+      # examples and consumer test (packed artifact), punctuation, schemas,
+      # docs, workflows, package contents, and a clean working tree.
+      - name: Full deterministic preflight (release mode)
+        run: npm run preflight:release
 
   build-artifacts:
     needs: validate-and-test
