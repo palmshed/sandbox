@@ -30,7 +30,9 @@ export default {
 
         const outcomes = await Promise.all(
           created.map(async ({ s, i }) => {
-            const e = await s.exec(`node -e "console.log('sandbox-' + ${i} + '-done')"`, { timeout: 10000 });
+            // Generous timeout: on Windows runners, antivirus scans can delay
+            // 50 concurrent node.exe launches well past the default 10s.
+            const e = await s.exec(`node -e "console.log('sandbox-' + ${i} + '-done')"`, { timeout: 30000 });
             await e.wait();
             return { i, exitCode: e.exitCode, stdout: e.stdout() };
           })
@@ -54,7 +56,7 @@ export default {
       const sandbox = await ctx.sandbox({ network: 'disabled', timeout: 15000 });
       const execs = Array.from({ length: 20 }, (_, i) =>
         (async () => {
-          const e = await sandbox.exec(`node -e "console.log('exec-' + ${i})"`, { timeout: 10000 });
+          const e = await sandbox.exec(`node -e "console.log('exec-' + ${i})"`, { timeout: 30000 });
           await e.wait();
           return { i, e };
         })()

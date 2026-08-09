@@ -62,8 +62,11 @@ export default {
       });
       await deep.wait();
       ctx.assert.equal(deep.exitCode, 0, 'exec with an absent workDir must auto-create it');
+      // process.cwd() uses platform separators (backslashes on Windows), so
+      // normalize to forward slashes before matching the requested workDir.
+      const cwdNormalized = deep.stdout().replace(/\\/g, '/');
       ctx.assert.ok(
-        deep.stdout().includes('projects/a/b/c/d'),
+        cwdNormalized.includes('projects/a/b/c/d'),
         'exec must run inside the auto-created workDir'
       );
 
