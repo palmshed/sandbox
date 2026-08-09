@@ -41,6 +41,13 @@ promises below are enforceable.
   - [x] All examples verified against the packed release artifact in CI
         (`examples.yml` packs and installs the tarball, then runs all four
         examples; see `examples/README.md`).
+  - [x] **Production Validation Suite**: packed-artifact end-to-end gate
+        (`production/`, `production.yml`) runs adversarial consumer workflows
+        (AI agent, code evaluation platform, CI runner), concurrency, recovery,
+        and resilience scenarios against the installed tarball on Ubuntu, macOS,
+        and Windows, then asserts zero residue (no leaked sandbox dirs, registry
+        entries, or live workload processes). Soak and the exact-version gate
+        run nightly (`scheduled-tests.yml`).
   - [x] 3-OS CI, compliance & TCK, repro laboratory, consumer test, and
         documentation punctuation check all green.
   - [x] `npm pack --dry-run` inspected before each release.
@@ -103,3 +110,14 @@ Claimable guarantees at v1.0.0:
   post-mortem stale-sandbox reaping are implemented, tested, and documented
   (RFC 0005). No public API or spec schema changes; `@palmshed/sandbox@1.0.0`
   is unaffected.
+- Production Validation Suite (`production/`): packed-artifact end-to-end
+  scenarios and soak, wired into `production.yml` (3-OS) and the nightly
+  `scheduled-tests.yml`. No public API or spec schema changes.
+- Signal-death correctness fix in the native backend: a workload killed by a
+  signal (e.g. `process.abort()`, `SIGABRT`/`SIGSEGV`) was reported as
+  `completed` with `exitCode 0` because `child_process` reports `code === null`
+  on signal death and the backend mapped it to 0. It is now surfaced as
+  `failed` with the conventional `128 + signalNumber` exit code, and the signal
+  is recorded in `execution.metadata().signal`. Caught by the new
+  `recovery` production scenario; covered by the existing `fail-then-reuse`
+  crash case. No public API or spec schema changes.

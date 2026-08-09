@@ -199,6 +199,40 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 ---
 
+## Phase 9 - Production Validation Suite (Complete)
+
+> **Goal**: Release confidence comes from an adversarial, packed-artifact
+> gate, not only from unit and integration suites.
+> **Status**: Complete (2026-08-09). `production/` ships a scenario runner,
+> residue detection, seven consumer-workflow scenarios, and a soak driver; CI
+> wires it against the packed npm tarball on the 3-OS matrix (`production.yml`)
+> with nightly soak and an exact-version gate (`scheduled-tests.yml`).
+
+- [x] **Runner (`production/run.mjs`)**: scenario discovery, per-scenario timing
+      budgets, step timing, `--list` / `--only` / `--verbose`, summary table,
+      non-zero exit on failure or residue.
+- [x] **Residue detection (`production/lib/residue.mjs`)**: leaked sandbox dirs,
+      leaked registry entries, processes holding sandbox dirs (Linux `/proc`,
+      POSIX `lsof +L1`), registry pgid snapshots with live-process checks.
+- [x] **Consumer-workflow scenarios**: AI coding agent (streaming, patch, test
+      rerun, artifact byte-compare), CI runner (green build → regression →
+      artifact preserved), code evaluation platform (20 sandboxes, mixed
+      pass/fail/timeout/CPU-kill outcomes, pool 8, reuse after kill).
+- [x] **Adversarial scenarios**: concurrency (50 sandboxes + 20 parallel execs
+      in one), recovery (quota+timeout, CPU under concurrency,
+      destroy-while-running, crash, 50 create/destroy cycles), resilience
+      (malformed input, workDir auto-create/traversal, env overrides vs host
+      allowlist, symlinks, 2000-file tree, 4 MiB stdout/stderr byte-exact).
+- [x] **Soak (`production/soak/soak.mjs`)**: N sandboxes × read/write/exec
+      cycles for a duration; reports iterations, throughput, failures; nightly
+      `--minutes 5 --sandboxes 25`.
+- [x] **Signal-death correctness fix** (found by the `recovery` scenario): a
+      signal-killed workload (e.g. `process.abort()`) was reported as
+      `completed` with `exitCode 0`; the native backend now reports `failed`
+      with `128 + signalNumber` and records the signal in metadata.
+
+---
+
 ## Living Engineering Gist Maintenance Plan
 
 Maintain the central project Gist alongside every capability transition as a cumulative engineering log (preserving past validation history while appending new revisions):
