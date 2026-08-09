@@ -82,7 +82,7 @@ sandbox/
 ├── production/            # Production Validation Suite (packed-artifact end-to-end gates)
 │   ├── run.mjs            # Scenario runner (--list / --only / --verbose, residue checks)
 │   ├── lib/               # Harness (ctx, asserts, steps) + residue detection
-│   ├── scenarios/         # ai-agent, ci-runner, code-evaluator, concurrency, recovery, resilience, artifacts
+│   ├── scenarios/         # ai-agent, ci-runner, code-evaluator, concurrency, recovery, crash-recovery, resilience, artifacts
 │   ├── soak/soak.mjs      # Sustained soak driver (--minutes / --sandboxes)
 │   └── README.md          # Confidence-gate criteria and run instructions
 ├── AGENTS.md              # Primary agent reference guide

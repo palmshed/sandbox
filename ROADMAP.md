@@ -204,12 +204,14 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 > **Goal**: Release confidence comes from an adversarial, packed-artifact
 > gate, not only from unit and integration suites.
 > **Status**: Complete (2026-08-09). `production/` ships a scenario runner,
-> residue detection, seven consumer-workflow scenarios, and a soak driver; CI
+> residue detection, eight consumer-workflow scenarios, and a soak driver; CI
 > wires it against the packed npm tarball on the 3-OS matrix (`production.yml`)
 > with nightly soak and an exact-version gate (`scheduled-tests.yml`).
-> **Validation recorded 2026-08-09**: Production Validation 7/7 scenarios +
+> **Validation recorded 2026-08-09**: Production Validation 8/8 scenarios +
 > soak smoke passed against the packed artifact on the Ubuntu/macOS/Windows
-> matrix in the same session (run `31319381753`). The suite surfaced and the
+> matrix in the same session (run `31319381753`). A dedicated
+> `crash-recovery` scenario was added afterwards to validate issue #10 across
+> process boundaries against the packed artifact. The suite surfaced and the
 > session fixed three Windows-only bugs that the 44-test SDK suite missed:
 > a single-shot `fs.rm` destroy race (retried removal + unregister in
 > `finally`), a registry-entry resurrection on destroy (serialized pgid writes

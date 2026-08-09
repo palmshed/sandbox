@@ -32,7 +32,10 @@ production/
 │   ├── ci-runner.mjs        # Build → test green → regression → artifact preserved
 │   ├── code-evaluator.mjs   # 20 sandboxes, mixed pass/fail/timeout/CPU-kill, pool 8
 │   ├── concurrency.mjs      # 50 concurrent sandboxes + 20 parallel execs in one
+│   ├── crash-recovery.mjs   # Host hard-kill → orphaned sandbox reaped on next create
 │   ├── recovery.mjs         # quota+timeout, CPU+concurrency, destroy-while-running, crashes
+│   ├── fixtures/
+│   │   └── crash-host.cjs   # Host-process fixture used by crash-recovery
 │   └── resilience.mjs       # Malformed input, env overrides, symlinks, 2000 files, 4MiB streams
 └── soak/
     └── soak.mjs             # Sustained soak: N sandboxes, --minutes / --sandboxes
