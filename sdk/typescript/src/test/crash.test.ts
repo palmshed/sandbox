@@ -86,7 +86,7 @@ interface HostState {
   mode: string;
 }
 
-async function spawnHost(mode: 'workload' | 'nohup'): Promise<{ child: ChildProcess; state: HostState }> {
+async function spawnHost(mode: 'workload' | 'nohup' | 'exit'): Promise<{ child: ChildProcess; state: HostState }> {
   const stateFile = path.join(
     os.tmpdir(),
     `host-state-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`
@@ -129,7 +129,7 @@ test('Crash Recovery (RFC 0005)', async (t) => {
   });
 
   await t.test('G1: graceful host shutdown cleans up sandbox and workload', async () => {
-    const { child, state } = await spawnHost('workload');
+    const { child, state } = await spawnHost(isWin ? 'exit' : 'workload');
     hosts.push(child);
     try {
       await waitUntilAsync(() => readEntry(state.dir).then((e) => e !== null));
@@ -138,8 +138,14 @@ test('Crash Recovery (RFC 0005)', async (t) => {
       if (state.workloadPid) assert.ok(pidAlive(state.workloadPid), 'workload should be running');
       assert.ok(fssync.existsSync(state.dir), 'sandbox dir should exist');
 
-      process.kill(child.pid!, 'SIGTERM');
-      await waitForExit(child);
+      if (isWin) {
+        // Windows cannot catch SIGTERM in JS handlers; the fixture self-exits,
+        // which is the cross-platform graceful 'exit' hook path.
+        await waitForExit(child);
+      } else {
+        process.kill(child.pid!, 'SIGTERM');
+        await waitForExit(child);
+      }
 
       assert.ok(!fssync.existsSync(state.dir), 'sandbox dir should be removed on graceful shutdown');
       if (state.workloadPid) {

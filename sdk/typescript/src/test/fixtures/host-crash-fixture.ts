@@ -53,6 +53,9 @@ async function main(): Promise<void> {
   if (mode === 'nohup') {
     command = "nohup sh -c 'sleep 600 & echo $! > sleep.pid; wait' >/dev/null 2>&1 & echo $! > shell.pid; wait";
     pidFile = 'sleep.pid';
+  } else if (process.platform === 'win32') {
+    command = 'node -e "setInterval(()=>{},1000)"';
+    pidFile = '';
   } else {
     command = "sh -c 'sleep 600 & echo $! > sleep.pid; wait'";
     pidFile = 'sleep.pid';
@@ -60,7 +63,7 @@ async function main(): Promise<void> {
 
   await sandbox.exec(command, { timeout: 0 });
 
-  const workloadPid = Number(await readSandboxFileUntilReady(sandbox, pidFile));
+  const workloadPid = pidFile ? Number(await readSandboxFileUntilReady(sandbox, pidFile)) : 0;
   const state = {
     pid: process.pid,
     dir: findOwnSandboxDir(),
@@ -68,6 +71,14 @@ async function main(): Promise<void> {
     mode,
   };
   fs.writeFileSync(stateFile, JSON.stringify(state));
+
+  if (mode === 'exit') {
+    // Graceful terminal event that is cross-platform: process.exit() runs the
+    // 'exit' hook, which must clean up every live sandbox. (On Windows,
+    // SIGTERM cannot be caught by JS handlers, so the suite uses this path.)
+    setTimeout(() => process.exit(0), 500);
+    return;
+  }
 
   // Keep the event loop alive so the workload keeps running until the test
   // terminates this host process.
