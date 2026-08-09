@@ -14,6 +14,9 @@ on:
       - 'sdk/typescript/src/**'
       - 'sdk/typescript/package.json'
 
+permissions:
+  contents: read
+
 jobs:
   examples:
     name: examples (${{ matrix.os }})

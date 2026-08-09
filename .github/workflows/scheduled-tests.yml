@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: '0 2 * * 1'
 
+permissions:
+  contents: read
+
 jobs:
   scheduled-tests:
     runs-on: ubuntu-latest
