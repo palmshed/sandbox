@@ -15,6 +15,7 @@ import {
   reapStaleSandboxes,
   readHostStartToken,
   cleanupSandboxSync,
+  removeSandboxDir,
 } from '../core/crashRecovery.js';
 
 /**
@@ -1036,10 +1037,20 @@ export class NativeBackend implements BackendEngine {
     }
     this.activeProcesses.clear();
 
-    if (this.sandboxDir) {
-      await fs.rm(this.sandboxDir, { recursive: true, force: true });
+    try {
+      if (this.sandboxDir) {
+        // Retrying removal: on Windows a terminating workload still holds the
+        // sandbox dir as its cwd until the tree is actually gone, so a single
+        // fs.rm races the kill and leaks the directory (and, if it throws, the
+        // registry entry too). removeSandboxDir tolerates EBUSY/EPERM up to the
+        // reaper's removal deadline.
+        await removeSandboxDir(this.sandboxDir);
+      }
+    } finally {
+      // The registry entry must not outlive the sandbox even if the directory
+      // removal ultimately fails, or the reaper would hold stale state.
+      await unregisterSandbox(this.sandboxDir);
     }
-    await unregisterSandbox(this.sandboxDir);
     if (this.crashCleanup) {
       uninstallCrashHooks(this.crashCleanup);
       this.crashCleanup = null;

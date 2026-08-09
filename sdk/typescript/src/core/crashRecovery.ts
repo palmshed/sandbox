@@ -285,7 +285,7 @@ export const reapDiagnostics: {
  * its current directory, so the kill + rm must tolerate EBUSY/EPERM until the
  * process tree is actually gone. On POSIX the first attempt normally succeeds.
  */
-async function removeSandboxDir(dir: string): Promise<void> {
+export async function removeSandboxDir(dir: string): Promise<void> {
   const deadline = Date.now() + RM_MAX_WAIT_MS;
   let lastErr: unknown = null;
   for (;;) {

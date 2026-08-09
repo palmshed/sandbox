@@ -45,8 +45,12 @@ function main() {
       `${passed} scenarios passed, ${failed} failed`
     );
     if (!suite.ok) {
-      const failLine = suite.stdout.split('\n').filter((l) => l.startsWith('FAIL')).slice(0, 3).join(' | ');
-      report.check('production suite failure detail', false, failLine || suite.stderr.trim().slice(-300));
+      // Dump the scenario detail so CI logs carry the root cause (which
+      // scenario, which step, and any residue) instead of only the summary.
+      console.log('\n--- production suite output (failed) ---');
+      console.log(suite.stdout.trim());
+      if (suite.stderr.trim()) console.error(suite.stderr.trim());
+      console.log('--- end production suite output ---\n');
     }
   }
 
