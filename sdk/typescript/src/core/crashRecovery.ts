@@ -188,6 +188,42 @@ function killWorkloadRoot(pgid: number): void {
   }
 }
 
+const RM_RETRY_INTERVAL_MS = 100;
+const RM_MAX_WAIT_MS = 15000;
+
+/**
+ * Remove a sandbox directory, retrying transient failures. On Windows a
+ * directory cannot be removed while a terminating workload still holds it as
+ * its current directory, so the kill + rm must tolerate EBUSY/EPERM until the
+ * process tree is actually gone. On POSIX the first attempt normally succeeds.
+ */
+async function removeSandboxDir(dir: string): Promise<void> {
+  const deadline = Date.now() + RM_MAX_WAIT_MS;
+  for (;;) {
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+      return;
+    } catch {
+      if (Date.now() >= deadline) return;
+      await new Promise((r) => setTimeout(r, RM_RETRY_INTERVAL_MS));
+    }
+  }
+}
+
+/** Sync variant of removeSandboxDir, safe inside signal/exit handlers. */
+function removeSandboxDirSync(dir: string): void {
+  const deadline = Date.now() + RM_MAX_WAIT_MS;
+  for (;;) {
+    try {
+      fssync.rmSync(dir, { recursive: true, force: true });
+      return;
+    } catch {
+      if (Date.now() >= deadline) return;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, RM_RETRY_INTERVAL_MS);
+    }
+  }
+}
+
 /**
  * Register a newly created sandbox in the shared registry.
  * Best-effort: failure to register weakens recovery but never breaks exec.
@@ -279,11 +315,7 @@ export async function reapStaleSandboxes(skipDir?: string): Promise<number> {
     for (const pgid of entry.pgids) {
       if (Number.isInteger(pgid)) killWorkloadRoot(pgid);
     }
-    try {
-      await fs.rm(entry.dir, { recursive: true, force: true });
-    } catch {
-      // directory already gone
-    }
+    await removeSandboxDir(entry.dir);
     await removeEntry(entry.dir);
     reaped++;
   }
@@ -318,12 +350,8 @@ export async function reapStaleSandboxes(skipDir?: string): Promise<number> {
         continue;
       }
       if (now - mtimeMs < ENTRYLESS_GRACE_MS) continue;
-      try {
-        await fs.rm(dir, { recursive: true, force: true });
-        reaped++;
-      } catch {
-        // ignore
-      }
+      await removeSandboxDir(dir);
+      reaped++;
     }
   }
 
@@ -342,11 +370,7 @@ export function cleanupSandboxSync(sandboxDir: string, workloadRoots: Iterable<n
     if (Number.isInteger(pid)) killWorkloadRoot(pid);
   }
   if (sandboxDir) {
-    try {
-      fssync.rmSync(sandboxDir, { recursive: true, force: true });
-    } catch {
-      // directory already gone
-    }
+    removeSandboxDirSync(sandboxDir);
   }
   void removeEntry(sandboxDir);
 }

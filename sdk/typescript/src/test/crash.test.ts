@@ -181,7 +181,7 @@ test('Crash Recovery (RFC 0005)', async (t) => {
       // Creating a new sandbox triggers the stale-sandbox sweep.
       const fresh = await Sandbox.create({ backend: 'native', timeout: 5000 });
       try {
-        await waitUntil(() => !fssync.existsSync(state.dir));
+        await waitUntil(() => !fssync.existsSync(state.dir), 20000);
       } finally {
         await fresh.destroy();
       }
