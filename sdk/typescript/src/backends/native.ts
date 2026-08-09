@@ -603,7 +603,7 @@ export class NativeBackend implements BackendEngine {
         reject(new SandboxError(`Execution failed: ${err.message}`, 'EXEC_FAILED', err));
       });
 
-      child.on('close', async (code) => {
+      child.on('close', async (code, signal) => {
         settled = true;
         this.activeProcesses.delete(child);
         if (timer) clearTimeout(timer);
@@ -638,7 +638,17 @@ export class NativeBackend implements BackendEngine {
           }
         }
 
-        const exitCode = timedOut || oomKilled || cpuExceeded || diskExceeded ? -1 : (code ?? 0);
+        // A process that died from a signal (crash like SIGABRT/SIGSEGV, or
+        // an external kill) reports `code === null`. Surface a conventional
+        // non-zero exit code (128 + signal number) so a signal death is never
+        // mistaken for a successful exit.
+        const terminatedBySignal = code === null && signal !== null;
+        const exitCode =
+          timedOut || oomKilled || cpuExceeded || diskExceeded
+            ? -1
+            : terminatedBySignal
+              ? 128 + (os.constants.signals[signal as keyof typeof os.constants.signals] ?? 0)
+              : (code ?? 0);
 
         if (oomKilled && memLimitBytes !== null) {
           // Capture final RSS best-effort (process is gone, use limit as observed)
@@ -713,6 +723,7 @@ export class NativeBackend implements BackendEngine {
           durationMs,
           exitCode,
           timedOut,
+          signal: terminatedBySignal ? signal : undefined,
           cpuTimeMs: finalCpuTimeMs,
         };
 
