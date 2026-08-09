@@ -61,7 +61,8 @@ function main() {
   report.check('git tag matches version', tagOk, tagDetail);
 
   const changelog = fss.readFileSync(path.join(SPEC_DIR, 'CHANGELOG.md'), 'utf-8');
-  const entryPresent = new RegExp(`\\[${pkgVer.replace(/\./g, '\\.')}\\]`).test(changelog);
+  const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const entryPresent = new RegExp(`\\[${escapeRegex(pkgVer)}\\]`).test(changelog);
   report.check('CHANGELOG entry for version', entryPresent, entryPresent ? `[${pkgVer}]` : `no [${pkgVer}] entry`);
 
   const rrPath = path.join(REPO_ROOT, 'docs', 'release-readiness.md');
