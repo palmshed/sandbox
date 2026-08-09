@@ -1,0 +1,55 @@
+name: Capability Probes
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+permissions:
+  contents: read
+
+jobs:
+  # Landlock capability probe (RFC 0006, issue #3). Runs the C helper compiled
+  # by scripts/probes/landlock-capability.mjs as an unprivileged user against
+  # the exact ubuntu-24.04 runner image and records the ABI + feature evidence
+  # as an artifact. This is EVIDENCE, not a gate: it documents what the kernel
+  # mechanism supports; capability promotion to `osFilesystemIsolation:
+  # supported` happens only after the real Native sandbox passes the RFC 0006
+  # escape suite. The verdict is reported but does not fail the job, so a
+  # runner image that genuinely lacks Landlock is recorded honestly instead of
+  # being hidden behind a red pipeline.
+  landlock-probe:
+    name: landlock (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Run Landlock capability probe
+        id: probe
+        run: |
+          node scripts/probes/landlock-capability.mjs --json > probe.json
+          echo "verdict=$(node -e 'const j=require("./probe.json");console.log(j.results.verdict)')"
+          echo "abi=$(node -e 'const j=require("./probe.json");console.log(j.results.abi || "n/a")')"
+          cat probe.json
+
+      - name: Upload probe evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: landlock-probe-ubuntu2404
+          path: probe.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Job summary
+        run: |
+          node -e 'const j=require("./probe.json");
+            const r=j.results; const ok=Object.entries(r).filter(([,v])=>v===true);
+            const bad=Object.entries(r).filter(([,v])=>v===false);
+            let s=`# Landlock probe (ubuntu-24.04)\n\n- Platform: ${j.platform} / ${j.arch}\n- User: ${j.user} (euid ${j.euid})\n- Verdict: **${r.verdict}**\n- ABI: ${r.abi}\n- REFER: ${r.refer_supported}\n- PASS: ${ok.length}, FAIL: ${bad.length}\n\n`;
+            const rows=[["check","result"],["---","---"],...Object.entries(r).map(([k,v])=>[k,String(v)])];
+            s+=rows.map(([k,v])=>`| ${k} | ${v} |`).join("\n");
+            require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, s);'

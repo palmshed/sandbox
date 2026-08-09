@@ -62,7 +62,7 @@ sandbox/
 │   ├── verify-gitstate.mjs    # git repository + generated-artifact tracking checks
 │   ├── verify-release.mjs     # Version gate (tag == SDK == spec) + CHANGELOG
 │   ├── lib/preflight-lib.mjs  # Shared helpers (run, install, artifact, counts, Reporter)
-│   └── probes/                # Capability probes (network isolation, Landlock filesystem isolation measurement)
+│   └── probes/                # Capability probes (network isolation, Landlock FS isolation + runtime allowlist + confinement runner, RFC 0006)
 ├── compliance/            # Cross-SDK & Backend conformance test suites
 │   ├── sdk/               # SDK behavior verification
 │   ├── backends/          # Backend engine contract tests

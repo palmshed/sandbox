@@ -215,6 +215,41 @@ repeated on the CI Ubuntu image used by `production.yml`/`docs.yml`, and the
 runtime allowlist the reference SDK needs (`node`, `sh`) must be enumerated
 (`ldd`-derived) so the allowlist in the implementation is evidence-based.
 
+### Runtime allowlist + confinement runner evidence
+
+New artifacts, enabled by the RFC's design gate:
+
+- `scripts/probes/runtime-allowlist.mjs`: derives the minimal read-only
+  runtime allowlist from the binaries the workload shell needs. Given `node`
+  (the SDK runtime), the shell, and `unshare` (the network-restricted spawn
+  path), it resolves each with `ldd` to collect the dynamic loader, every
+  link-time shared object, and the data files libc/OpenSSL/zoneinfo need
+  before exec (`ld.so.cache`, `nsswitch.conf`, `passwd`/`group`,
+  `resolv.conf`, `hosts`, `localtime`, `zoneinfo`, `openssl.cnf`, node's
+  externalized builtins under `/usr/share/nodejs`, locale). Everything else is
+  denied.
+- `scripts/probes/landlock-run.c`: the reusable confinement trampoline the
+  implementation will build on. It handles every filesystem right the ABI
+  supports (no silent subsetting), grants full access to the workspace only,
+  grants the derived allowlist read-only (rights chosen per inode type:
+  `READ_DIR` is directory-only, granting it on a file inode is `EINVAL`),
+  applies `PR_SET_NO_NEW_PRIVS` then `landlock_restrict_self` (irrevocable,
+  inherited by descendants), and `execvp`s the workload. If Landlock is
+  unavailable or restriction fails it exits non-zero WITHOUT running the
+  workload: never a silent fallback.
+
+Smoke run (`node scripts/probes/runtime-allowlist.mjs --smoke`) against the
+same Ubuntu 24.04 kernel 6.8.0 host, 11/11 checks passed with generated
+`EACCES` evidence: shell starts and executes; node starts and executes;
+write inside the workspace allowed; allowlisted runtime data readable;
+unallowlisted exec denied; write outside the workspace denied; read outside
+the workspace denied; data files read-only; descendant re-exec inherits the
+denial; and the production `unshare -n --user --map-root-user -- <cmd>`
+network-restricted composition works with the runner as the unshare target,
+still denying outside reads. This proves the mechanism AND the allowlist
+composition; the escape suite against the real Native backend is still
+required before promoting `osFilesystemIsolation: supported`.
+
 ## Design Decision Gate (this RFC does not implement)
 
 Following RFC 0004's discipline, the order is:
