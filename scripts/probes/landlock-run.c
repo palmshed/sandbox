@@ -116,6 +116,12 @@
 #ifndef LANDLOCK_ACCESS_FS_TRUNCATE
 #define LANDLOCK_ACCESS_FS_TRUNCATE (1ULL << 14)
 #endif
+#ifndef LANDLOCK_ACCESS_FS_IOCTL_DEV
+#define LANDLOCK_ACCESS_FS_IOCTL_DEV (1ULL << 15)
+#endif
+#ifndef LANDLOCK_ACCESS_FS_RESOLVE_UNIX
+#define LANDLOCK_ACCESS_FS_RESOLVE_UNIX (1ULL << 16)
+#endif
 
 /* Off-Linux fallback declarations so the file still passes a syntax check
  * (it never runs outside Linux; the real types come from <linux/landlock.h>). */
@@ -145,6 +151,8 @@ typedef unsigned long long __u64;
 #define LANDLOCK_ACCESS_FS_MAKE_SYM (1ULL << 12)
 #define LANDLOCK_ACCESS_FS_REFER (1ULL << 13)
 #define LANDLOCK_ACCESS_FS_TRUNCATE (1ULL << 14)
+#define LANDLOCK_ACCESS_FS_IOCTL_DEV (1ULL << 15)
+#define LANDLOCK_ACCESS_FS_RESOLVE_UNIX (1ULL << 16)
 struct landlock_ruleset_attr { __u64 handled_access_fs; };
 struct landlock_path_beneath_attr { __u64 allowed_access; int parent_fd; };
 extern int prctl(int, ...);
@@ -187,7 +195,13 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  /* Handle every right the ABI supports. Nothing may be silently open. */
+  /* Handle every right the ABI supports. Nothing may be silently open.
+   * Landlock denies-by-default ONLY the rights listed in handled_access_fs;
+   * unhandled rights remain unrestricted. Version-gate the rights added
+   * after ABI 2: TRUNCATE (>= 3), IOCTL_DEV (>= 5), RESOLVE_UNIX (>= 9).
+   * The CI probe observed ABI 7 on ubuntu-24.04, so IOCTL_DEV is live in
+   * production CI. Charged per inode type below, so READ_DIR is only granted
+   * on directories (granting it on a file inode is EINVAL). */
   __u64 allAccess =
       LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_WRITE_FILE |
       LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR |
@@ -197,6 +211,16 @@ int main(int argc, char **argv) {
       LANDLOCK_ACCESS_FS_MAKE_FIFO | LANDLOCK_ACCESS_FS_MAKE_BLOCK |
       LANDLOCK_ACCESS_FS_MAKE_SYM | LANDLOCK_ACCESS_FS_REFER;
   if (abi >= 3) allAccess |= LANDLOCK_ACCESS_FS_TRUNCATE;
+  if (abi >= 5) allAccess |= LANDLOCK_ACCESS_FS_IOCTL_DEV;
+  if (abi >= 9) allAccess |= LANDLOCK_ACCESS_FS_RESOLVE_UNIX;
+  /* Known rights we do handle above are all version-gated, so no known bit
+   * silently stays unhandled on a kernel that exposes it. Rights introduced
+   * in a FUTURE ABI (bits unknown to this build) cannot be handled here; the
+   * Linux headers backfill, but a runtime new right would remain unrestricted.
+   * That is a documented build-time boundary, not a silent fallback on a
+   * supported right. */
+  fprintf(stderr, "landlock-run: ABI %d handled bytes %#llx\n", abi,
+          (unsigned long long)allAccess);
 
   struct landlock_ruleset_attr attrs = {.handled_access_fs = allAccess};
   int ruleset_fd =

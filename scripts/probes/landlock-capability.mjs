@@ -8,7 +8,9 @@
  *   1. The Landlock ABI is available on this kernel.
  *   2. The filesystem rights required by the RFC-style guarantee are
  *      supported by that ABI (read/write/execute, make/remove, and REFER for
- *      hardlink/rename semantics on ABI >= 2).
+ *      hardlink/rename semantics on ABI >= 2, plus the later-ABI rights
+ *      TRUNCATE >= 3, IOCTL_DEV >= 5, RESOLVE_UNIX >= 9), version-gated so
+ *      no right the running kernel exposes is left silently unhandled.
  *   3. An unprivileged process can create and apply the ruleset.
  *   4. The ruleset is inherited by a descendant process.
  *   5. Access outside the allowlist is denied, including a workspace symlink

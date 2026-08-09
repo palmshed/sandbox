@@ -197,8 +197,11 @@ sandbox path passes the adversarial test plan above.
 
 | Assumption (RFC 0006 dependency) | Result |
 |---|---|
-| Landlock ABI available | **ABI 4** |
+| Landlock ABI available | **ABI 4** (local kernel 6.8.0), **ABI 7** (CI: ubuntu-24.04 x86_64 runner) |
 | REFER right (hardlink/rename semantics, E3/E8) supported | yes (ABI >= 2) |
+| TRUNCATE right supported | yes (ABI >= 3, ABI 4 and 7 both) |
+| IOCTL_DEV right (device ioctl control, ABI >= 5) | handled on CI's ABI 7; not on local ABI 4 |
+| RESOLVE_UNIX right (pathname unix-socket resolve, ABI >= 9) | not yet (both hosts below ABI 9) |
 | Ruleset create / add_rule / restrict_self as unprivileged user | ok |
 | no_new_privs applied | ok |
 | Allowlist read + write (workspace) | ok |
@@ -207,8 +210,23 @@ sandbox path passes the adversarial test plan above.
 | Outside create (new file in parent dir) denied | ok |
 | Workspace symlink escaping outside denied | ok |
 | Descendant process inherits the denial | ok |
-| unprivileged enforcement (no root run) | yes |
+| unprivileged enforcement (no root run) | yes (CI euid 1001) |
 | **Verdict** | **supported** (mechanism-level) |
+
+The CI probe runs `scripts/probes/landlock-capability.mjs` on the real
+`ubuntu-24.04` x86_64 runner (`probes.yml`) as an unprivileged user (euid
+1001) and uploads the JSON evidence as an artifact. The mechanism probe is
+evidence, not a gate: `osFilesystemIsolation: supported` still requires the
+real Native sandbox path to pass the adversarial test plan.
+
+Both the probe and the confinement runner handle **every filesystem right the
+running ABI exposes**, version-gated so no supported bit is left silently
+unrestricted: base rights (ABI 1), `REFER` (ABI >= 2), `TRUNCATE`
+(ABI >= 3), `IOCTL_DEV` (ABI >= 5), `RESOLVE_UNIX` (ABI >= 9). On the ABI-7
+CI kernel the handled mask therefore closes `IOCTL_DEV`, which the earlier
+ABI-4 local host could not. Handled masks are recorded in the probe JSON
+(`rights.handled_mask`, current ABI-4 evidence `0x7fff`), so a future build
+can diff the closed set across kernels.
 
 Follow-up probes required before implementation: the same run must be
 repeated on the CI Ubuntu image used by `production.yml`/`docs.yml`, and the

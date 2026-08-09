@@ -47,6 +47,21 @@
 
 #define PR_SET_NO_NEW_PRIVS 38
 
+/* Rights defined after older headers shipped; backfill so a ruleset's
+ * handled mask can reference them even when <linux/landlock.h> lags. */
+#ifndef LANDLOCK_ACCESS_FS_REFER
+#define LANDLOCK_ACCESS_FS_REFER (1ULL << 13)
+#endif
+#ifndef LANDLOCK_ACCESS_FS_TRUNCATE
+#define LANDLOCK_ACCESS_FS_TRUNCATE (1ULL << 14)
+#endif
+#ifndef LANDLOCK_ACCESS_FS_IOCTL_DEV
+#define LANDLOCK_ACCESS_FS_IOCTL_DEV (1ULL << 15)
+#endif
+#ifndef LANDLOCK_ACCESS_FS_RESOLVE_UNIX
+#define LANDLOCK_ACCESS_FS_RESOLVE_UNIX (1ULL << 16)
+#endif
+
 static void record(const char *key, const char *value) {
   printf("%s:%s\n", key, value);
 }
@@ -100,10 +115,15 @@ int main(int argc, char **argv) {
 
   int referSupported = abi >= 2;
   record("rights.refer_supported", referSupported ? "yes" : "no");
+  int truncateSupported = abi >= 3;
+  int ioctlDevSupported = abi >= 5;
+  int resolveUnixSupported = abi >= 9;
 
   /* The full set of filesystem rights this ABI can handle. Using the whole
    * handled set (not just a subset) is required: any bit we leave unhandled
-   * is silently un-restricted. */
+   * is silently un-restricted. Version-gate rights added after ABI 2:
+   * TRUNCATE (>= 3), IOCTL_DEV (>= 5), RESOLVE_UNIX (>= 9), so an ABI-7 host
+   * (e.g. the ubuntu-24.04 CI runner) still closes every right it exposes. */
   const __u64 handled = referSupported ? LANDLOCK_ACCESS_FS_REFER : 0;
   __u64 allAccess =
       LANDLOCK_ACCESS_FS_EXECUTE | LANDLOCK_ACCESS_FS_WRITE_FILE |
@@ -113,6 +133,18 @@ int main(int argc, char **argv) {
       LANDLOCK_ACCESS_FS_MAKE_REG | LANDLOCK_ACCESS_FS_MAKE_SOCK |
       LANDLOCK_ACCESS_FS_MAKE_FIFO | LANDLOCK_ACCESS_FS_MAKE_BLOCK |
       LANDLOCK_ACCESS_FS_MAKE_SYM | handled;
+  if (truncateSupported) allAccess |= LANDLOCK_ACCESS_FS_TRUNCATE;
+  if (ioctlDevSupported) allAccess |= LANDLOCK_ACCESS_FS_IOCTL_DEV;
+  if (resolveUnixSupported) allAccess |= LANDLOCK_ACCESS_FS_RESOLVE_UNIX;
+  record("rights.truncate_supported", truncateSupported ? "yes" : "no");
+  record("rights.ioctl_dev_supported", ioctlDevSupported ? "yes" : "no");
+  record("rights.resolve_unix_supported", resolveUnixSupported ? "yes" : "no");
+  {
+    char handledHex[64];
+    snprintf(handledHex, sizeof(handledHex), "0x%llx",
+             (unsigned long long)allAccess);
+    record("rights.handled_mask", handledHex);
+  }
 
   struct landlock_ruleset_attr attrs = {
       .handled_access_fs = allAccess,

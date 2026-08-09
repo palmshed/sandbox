@@ -136,6 +136,19 @@ async function main() {
   ];
   OUT.dataFiles = dataCandidates.filter((f) => exists(f));
 
+  // When node is not from the distro (e.g. actions/setup-node toolcache on
+  // CI runners), the externalized builtins live under <prefix>/lib/node_modules
+  // instead of /usr/share/nodejs. Detect that layout so the allowlist still
+  // covers node's runtime data on such hosts.
+  for (const b of resolved) {
+    const prefix = path.dirname(path.dirname(b)); // <prefix>/bin -> <prefix>
+    const nodeModules = path.join(prefix, 'lib', 'node_modules');
+    if (exists(nodeModules) && !OUT.dataFiles.includes(nodeModules)) {
+      OUT.dataFiles.push(nodeModules);
+    }
+  }
+  OUT.dataFiles.sort();
+
   emit();
 
   if (wantSmoke) {

@@ -53,3 +53,35 @@ jobs:
             const rows=[["check","result"],["---","---"],...Object.entries(r).map(([k,v])=>[k,String(v)])];
             s+=rows.map(([k,v])=>`| ${k} | ${v} |`).join("\n");
             require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, s);'
+
+  # Runtime allowlist + confinement runner (RFC 0006, step 2 evidence).
+  # Derives the minimal read-only allowlist the SDK runtime needs to launch
+  # (node, sh, unshare via ldd), then compiles the landlock-run.c trampoline
+  # and verifies the real runtime starts AND executes inside it under the
+  # ABI-7 ubuntu-24.04 kernel. Unlike the mechanism probe above, this proves
+  # the runtime (not just the kernel) works under confinement.
+  runtime-allowlist-smoke:
+    name: runtime-allowlist smoke (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Run runtime allowlist derivation + confinement smoke
+        id: smoke
+        run: |
+          node scripts/probes/runtime-allowlist.mjs --json > allowlist.json
+          node scripts/probes/runtime-allowlist.mjs --smoke 2>&1 | tee smoke.log
+          exit ${PIPESTATUS[0]}
+
+      - name: Upload smoke evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-allowlist-smoke-ubuntu2404
+          path: |
+            smoke.log
+            allowlist.json
+          if-no-files-found: error
+          retention-days: 30
