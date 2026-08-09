@@ -59,6 +59,7 @@ sandbox/
 │   ├── process/           # Lifecycle repros (signals, nested trees, destroy)
 │   ├── disk/              # Disk quota repros
 │   ├── network/           # Network isolation repros (RFC 0004)
+│   ├── crash/             # Crash recovery repros (RFC 0005; host-crash reaping)
 │   └── run.js             # Runs all repros; use --verbose for output
 ├── examples/              # Usage examples and scripts
 │   ├── consumer-test/     # Isolated consumer integration test (built from npm pack)

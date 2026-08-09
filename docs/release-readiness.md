@@ -96,3 +96,10 @@ Claimable guarantees at v1.0.0:
 - Rust, Go, and Python SDKs.
 - Phase 7 observability extras (peak resource reporting, fine-grained timing,
   benchmark baselines) if not complete at freeze time.
+
+### Completed post-v1.0.0 (2026-08-09)
+
+- Crash recovery (`#10`, Phase 6): graceful host shutdown cleanup and
+  post-mortem stale-sandbox reaping are implemented, tested, and documented
+  (RFC 0005). No public API or spec schema changes; `@palmshed/sandbox@1.0.0`
+  is unaffected.

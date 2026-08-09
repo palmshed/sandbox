@@ -23,7 +23,7 @@ const path = require('path');
 const root = __dirname;
 const verbose = process.argv.includes('--verbose');
 const forceNetwork = process.argv.includes('--all-network');
-const dirs = ['cpu', 'memory', 'process', 'disk', 'network'];
+const dirs = ['cpu', 'memory', 'process', 'disk', 'network', 'crash'];
 const isWin = process.platform === 'win32';
 
 let passed = 0;

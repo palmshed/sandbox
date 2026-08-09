@@ -18,7 +18,7 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "docs": "typedoc",
-    "test": "tsc && node --test --test-concurrency=1 dist/test/sandbox.test.js dist/test/stress.test.js"
+    "test": "tsc && node --test --test-concurrency=1 dist/test/sandbox.test.js dist/test/stress.test.js dist/test/crash.test.js"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

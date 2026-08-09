@@ -26,7 +26,8 @@ repro/
 ├── memory/   # RSS/memory limit enforcement
 ├── process/  # lifecycle: signal handling, nested trees, destroy
 ├── disk/     # virtual filesystem disk quota
-└── network/  # network isolation repros (RFC 0004 implemented)
+├── network/  # network isolation repros (RFC 0004 implemented)
+└── crash/    # crash recovery repros (RFC 0005 implemented)
 ```
 
 ## Bug / Guarantee Workflow
@@ -55,6 +56,7 @@ issue → minimal reproduction → failing test → fix → regression test
 | `process/`| Green: lifecycle guarantees are implemented |
 | `disk/`   | Green: disk quota is implemented |
 | `network/`| **Green**: `network: 'disabled'` is enforced by the Native backend via `sandbox-exec` (macOS, verified 5/5) and `unshare -n --user --map-root-user` (Linux when user namespaces are available; falls back to proxy env vars otherwise). See `rfcs/0004-network-isolation.md`. |
+| `crash/`  | **Green**: graceful shutdown and post-crash reaping work (RFC 0005). `graceful-shutdown.js` and `hard-crash.js` are POSIX-only and skip on Windows; `live-sandbox-immunity.js` is cross-platform. |
 
 ## Notes
 

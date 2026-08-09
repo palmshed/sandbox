@@ -341,6 +341,51 @@ structured `code`; non-thrown terminal outcomes surface as execution statuses
 behavior, and sandbox-reuse expectations of each code, see
 [`errors.md`](./errors.md).
 
+## Crash Recovery (Native backend)
+
+The Native backend cleans up after a host-process crash or unexpected
+disconnection (RFC 0005). Two mechanisms work together:
+
+1. **Graceful shutdown hooks.** When the host process exits normally, calls
+   `process.exit()`, or receives a terminal signal (`SIGTERM`, `SIGINT`,
+   `SIGHUP` on POSIX; `SIGINT`/`SIGBREAK` on Windows), the SDK runs the normal
+   destroy path for every live sandbox: the workload process groups are
+   terminated and the sandbox temp directories are removed. An uncaught
+   exception also triggers the exit hook before the process terminates.
+2. **Stale-sandbox reaper.** Each sandbox is registered in a shared registry
+   under the OS temp directory with the owning host PID, that PID's process
+   start-time token, and the workload process-group ids. When a sandbox is
+   created, the reaper sweeps the registry and reclaims any sandbox whose
+   recorded host is dead (or whose PID was recycled, detected via the start
+   token mismatch): it kills the orphaned workload processes and removes the
+   temp directory. This makes crash recovery eventual (on the next sandbox
+   creation) rather than immediate.
+
+### Guarantees
+
+* A hard host crash (`SIGKILL`, segfault, OOM-kill, power loss) does not leak
+  sandbox workloads or temp directories indefinitely.
+* Backgrounded (`&`, `nohup`) workloads cannot escape reaping via the process
+  group.
+* A live sandbox is never reaped: recovery verifies the recorded host PID and
+  its start-time token before reclaiming anything.
+* Reaped sandboxes are never resurrected; a fresh `Sandbox.create()` always
+  allocates a new workspace.
+
+### Unavoidable limitations
+
+* Cleanup is eventual: a hard-crashed host cannot clean up synchronously; the
+  sweep runs on the next sandbox creation.
+* No data is preserved: abandoned sandbox contents are destroyed, not
+  quarantined.
+* Windows has no POSIX process groups; reaping uses `taskkill /T /F` tree kill
+  and the start-time token is best-effort.
+* The registry metadata is not tamper-proof: the Native backend has no
+  OS-level filesystem isolation yet (issue `#3`), so a hostile workload sharing
+  the host account could in principle interfere with recovery bookkeeping. This
+  is a documented consequence of running without OS isolation, not a recovery
+  guarantee.
+
 ---
 
 ## Known Limitations (`v1.0.0`)

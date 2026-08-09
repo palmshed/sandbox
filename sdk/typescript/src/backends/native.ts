@@ -6,6 +6,16 @@ import * as os from 'os';
 import { BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError } from '../core/types.js';
 import { logDebug } from '../core/log.js';
+import {
+  installCrashHooks,
+  uninstallCrashHooks,
+  registerSandbox,
+  unregisterSandbox,
+  recordSandboxPgid,
+  reapStaleSandboxes,
+  readHostStartToken,
+  cleanupSandboxSync,
+} from '../core/crashRecovery.js';
 
 /**
  * Read the current Windows process table via PowerShell CIM (the replacement
@@ -67,6 +77,8 @@ export class NativeBackend implements BackendEngine {
   private activeProcesses = new Set<ChildProcess>();
   /** Whether Linux unshare --user network namespace creation succeeded at init */
   private networkIsolationAvailable = true;
+  /** Crash-recovery exit/signal cleanup bound to this instance (RFC 0005) */
+  private crashCleanup: (() => void) | null = null;
 
   /**
    * Environment contract: executions do NOT inherit the host environment
@@ -96,6 +108,17 @@ export class NativeBackend implements BackendEngine {
     const tmpPrefix = path.join(os.tmpdir(), 'palmshed-sandbox-');
     this.sandboxDir = await fs.mkdtemp(tmpPrefix);
     this.sandboxRealDir = await fs.realpath(this.sandboxDir);
+
+    // Crash recovery (RFC 0005): register this sandbox so a reaper in a later
+    // host process can clean it up if this host dies, and reap any sandboxes
+    // whose recorded host has crashed since the last sweep.
+    const hostStart = readHostStartToken(process.pid) ?? '';
+    await registerSandbox(this.sandboxDir, hostStart);
+    await reapStaleSandboxes(this.sandboxDir);
+    if (!this.crashCleanup) {
+      this.crashCleanup = () => this.cleanupSync();
+      installCrashHooks(this.crashCleanup);
+    }
 
     if (options.workDir) {
       await this.resolveWorkDir(options.workDir);
@@ -426,6 +449,9 @@ export class NativeBackend implements BackendEngine {
       });
 
       this.activeProcesses.add(child);
+      if (child.pid !== undefined) {
+        recordSandboxPgid(this.sandboxDir, child.pid);
+      }
       logDebug('exec.start', {
         backend: this.name,
         pid: child.pid ?? null,
@@ -1002,6 +1028,33 @@ export class NativeBackend implements BackendEngine {
     if (this.sandboxDir) {
       await fs.rm(this.sandboxDir, { recursive: true, force: true });
     }
+    await unregisterSandbox(this.sandboxDir);
+    if (this.crashCleanup) {
+      uninstallCrashHooks(this.crashCleanup);
+      this.crashCleanup = null;
+    }
     logDebug('backend.destroy', { backend: this.name });
+  }
+
+  /**
+   * Synchronous cleanup used by the crash-recovery exit/signal hooks (RFC
+   * 0005). Must not await; safe to run inside process 'exit' handlers.
+   */
+  private cleanupSync(): void {
+    for (const child of this.activeProcesses) {
+      if (child.pid !== undefined) {
+        try {
+          if (process.platform === 'win32') {
+            execSync(`taskkill /pid ${child.pid} /T /F`, { stdio: 'ignore' });
+          } else {
+            process.kill(-child.pid, 'SIGKILL');
+          }
+        } catch {
+          // process may have already exited
+        }
+      }
+    }
+    this.activeProcesses.clear();
+    cleanupSandboxSync(this.sandboxDir, []);
   }
 }

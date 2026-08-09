@@ -156,13 +156,14 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 ---
 
-## Phase 6 - Reliability Testing & Multi-Platform CI (In Progress)
+## Phase 6 - Reliability Testing & Multi-Platform CI (Complete)
 
 > **Goal**: Guarantee stability for high-throughput, long-running systems.
+> **Status**: Complete (2026-08-09). Crash recovery (`#10`) closed the phase; see RFC 0005.
 
 - [x] **Concurrency Testing**: 10 concurrent sandboxes + 8 parallel executions in a single sandbox (stress suite, `sdk/typescript/src/test/stress.test.ts`)
 - [x] **Lifecycle Stress Testing**: 50 rapid create → destroy cycles and destroy-while-in-flight (`stress.test.ts`); separate crash/destroy coverage in lifecycle test suite
-- [ ] **Crash Recovery** (#10): Graceful cleanup upon host process crash or unexpected backend disconnection; tracked separately from concurrency with its own design and failure model
+- [x] **Crash Recovery** (#10): Graceful cleanup upon host process crash or unexpected backend disconnection; RFC 0005 defines the failure model, guarantees (G1-G8), and reaper design. Implemented via in-process signal/exit hooks (graceful) plus a shared registry + stale-sandbox reaper that runs at sandbox creation (post-mortem, PID-reuse safe via host start-time token). Covered by 6 integration tests (`crash.test.ts`) and 3 repros (`repro/crash/`); platform matrix and limitations documented in RFC 0005 and `docs/api.md`
 - [x] **Longer Concurrent Execution Testing**: sustained concurrent workload test (10 sandboxes × 3 staggered rounds interleaving healthy executions, CPU-budget kills, reuse probes, and concurrent destroy). The `d760757` Windows flake **reproduced** on `a136c7a` (a single `echo` exceeded the 10s timeout while the other test file's PowerShell CIM samplers saturated the 2-vCPU runner) and was **fixed** rather than masked: `node --test --test-concurrency=1` serializes the SDK test files so each test's internal concurrency is preserved without cross-file CPU starvation (3 consecutive green Windows runs on `8d9f40e`)
 - [x] **Multi-Platform CI Matrix**: Automated CI verification on Ubuntu, macOS, and Windows (`ci.yml` + `compliance.yml` matrices, commit `ebd32be`)
 - [x] **Reproducible Guarantee Lab in CI**: `node repro/run.js` runs in the CI matrix with capability-aware network skip
