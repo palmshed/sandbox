@@ -6,7 +6,7 @@ import * as fs from 'fs/promises';
 import * as fssync from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { Sandbox } from '../index.js';
-import { reapStaleSandboxes, registryDir, readHostStartToken } from '../core/crashRecovery.js';
+import { reapStaleSandboxes, registryDir, readHostStartToken, reapDiagnostics } from '../core/crashRecovery.js';
 
 const fixturePath = path.join(__dirname, 'fixtures', 'host-crash-fixture.js');
 
@@ -193,7 +193,8 @@ test('Crash Recovery (RFC 0005)', async (t) => {
           throw new Error(
             `reaper failed to remove crashed dir: ` +
               `hostPid=${state.pid} hostAlive=${hostAlive} ` +
-              `entry=${JSON.stringify(entry)} manualReap=${manualReap} stillExists=${stillExists}; ` +
+              `entry=${JSON.stringify(entry)} manualReap=${manualReap} stillExists=${stillExists} ` +
+              `diag=${JSON.stringify(reapDiagnostics)}; ` +
               `original: ${(err as Error).message}`
           );
         }

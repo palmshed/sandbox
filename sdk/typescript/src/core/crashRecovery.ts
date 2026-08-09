@@ -155,10 +155,12 @@ async function removeEntry(sandboxDir: string): Promise<void> {
  */
 function killWorkloadRoot(pgid: number): void {
   if (process.platform === 'win32') {
+    reapDiagnostics.taskkillAttempted = true;
     try {
-      execSync(`taskkill /pid ${pgid} /T /F`, { stdio: 'ignore' });
-    } catch {
-      // workload already gone
+      execSync(`taskkill /pid ${pgid} /T /F`, { stdio: ['ignore', 'pipe', 'pipe'] });
+      reapDiagnostics.lastTaskkillError = null;
+    } catch (err) {
+      reapDiagnostics.lastTaskkillError = String((err as Error).message ?? err);
     }
     return;
   }
@@ -192,6 +194,20 @@ const RM_RETRY_INTERVAL_MS = 100;
 const RM_MAX_WAIT_MS = 15000;
 
 /**
+ * Diagnostics for the reaper's per-sandbox cleanup, consumed by tests to
+ * explain a failed reap (Windows CI). Not part of the public API.
+ */
+export const reapDiagnostics: {
+  lastRmError: string | null;
+  lastTaskkillError: string | null;
+  taskkillAttempted: boolean;
+} = {
+  lastRmError: null,
+  lastTaskkillError: null,
+  taskkillAttempted: false,
+};
+
+/**
  * Remove a sandbox directory, retrying transient failures. On Windows a
  * directory cannot be removed while a terminating workload still holds it as
  * its current directory, so the kill + rm must tolerate EBUSY/EPERM until the
@@ -199,12 +215,18 @@ const RM_MAX_WAIT_MS = 15000;
  */
 async function removeSandboxDir(dir: string): Promise<void> {
   const deadline = Date.now() + RM_MAX_WAIT_MS;
+  let lastErr: unknown = null;
   for (;;) {
     try {
       await fs.rm(dir, { recursive: true, force: true });
+      reapDiagnostics.lastRmError = null;
       return;
-    } catch {
-      if (Date.now() >= deadline) return;
+    } catch (err) {
+      lastErr = err;
+      if (Date.now() >= deadline) {
+        reapDiagnostics.lastRmError = String((err as Error).message ?? err);
+        return;
+      }
       await new Promise((r) => setTimeout(r, RM_RETRY_INTERVAL_MS));
     }
   }
