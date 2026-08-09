@@ -71,19 +71,22 @@ function pidAlive(pid: number): boolean {
     return (err as NodeJS.ErrnoException).code === 'EPERM';
   }
 }
-
 /**
  * Read the OS start-time token of `pid`, used with the recorded hostStart to
- * detect PID reuse. Linux: /proc/<pid>/stat field 22 (starttime). macOS:
- * `ps -o lstart=`. Windows: process creation time (best-effort).
+ * detect PID reuse. Linux: /proc/<pid>/stat field 22 (starttime), which is the
+ * 20th field after the ")" slice (state=0, ppid=1, ..., starttime=19); it is
+ * constant for the lifetime of a process, unlike vsize/utime fields which
+ * change and would cause false reaping. macOS: `ps -o lstart=`. Windows:
+ * process creation time (best-effort).
  */
-export function readHostStartToken(pid: number): string | null {  if (process.platform === 'linux') {
+export function readHostStartToken(pid: number): string | null {
+  if (process.platform === 'linux') {
     try {
       const stat = fssync.readFileSync(`/proc/${pid}/stat`, 'utf-8');
       const closeParen = stat.lastIndexOf(')');
       if (closeParen === -1) return null;
       const fields = stat.slice(closeParen + 2).split(' ');
-      return fields[21] ?? null;
+      return fields[19] ?? null;
     } catch {
       return null;
     }

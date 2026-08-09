@@ -6,7 +6,7 @@ import * as fs from 'fs/promises';
 import * as fssync from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import { Sandbox } from '../index.js';
-import { reapStaleSandboxes, registryDir } from '../core/crashRecovery.js';
+import { reapStaleSandboxes, registryDir, readHostStartToken } from '../core/crashRecovery.js';
 
 const fixturePath = path.join(__dirname, 'fixtures', 'host-crash-fixture.js');
 
@@ -268,6 +268,13 @@ test('Crash Recovery (RFC 0005)', async (t) => {
     } finally {
       await sandbox.destroy();
     }
+  });
+
+  await t.test('G5b: live process start-time token is stable across reads', async () => {
+    const token1 = readHostStartToken(process.pid);
+    assert.ok(token1 !== null && token1 !== '', 'host start token must be readable');
+    const token2 = readHostStartToken(process.pid);
+    assert.equal(token2, token1, 'token must be constant for a live process (guards vsize drift)');
   });
 
   await t.test('G6: reaped sandboxes are never resurrected; fresh create is clean', async () => {
