@@ -181,7 +181,22 @@ test('Crash Recovery (RFC 0005)', async (t) => {
       // Creating a new sandbox triggers the stale-sandbox sweep.
       const fresh = await Sandbox.create({ backend: 'native', timeout: 5000 });
       try {
-        await waitUntil(() => !fssync.existsSync(state.dir), 20000);
+        try {
+          await waitUntil(() => !fssync.existsSync(state.dir), 20000);
+        } catch (err) {
+          const entry = await readEntry(state.dir);
+          const hostAlive = pidAlive(state.pid);
+          const probe = await Sandbox.create({ backend: 'native', timeout: 5000 });
+          const manualReap = await reapStaleSandboxes(state.dir);
+          const stillExists = fssync.existsSync(state.dir);
+          await probe.destroy();
+          throw new Error(
+            `reaper failed to remove crashed dir: ` +
+              `hostPid=${state.pid} hostAlive=${hostAlive} ` +
+              `entry=${JSON.stringify(entry)} manualReap=${manualReap} stillExists=${stillExists}; ` +
+              `original: ${(err as Error).message}`
+          );
+        }
       } finally {
         await fresh.destroy();
       }
