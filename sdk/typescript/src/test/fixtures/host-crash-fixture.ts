@@ -9,8 +9,13 @@
  * path).
  *
  * Usage: node host-crash-fixture.js <stateFile> <mode>
- *   mode 'workload':  foreground long-running workload (sh -> sleep 600)
- *   mode 'nohup':     nohup-backgrounded workload trying to outlive its host
+ *   mode 'workload':  foreground long-running workload (sh -> node, idle)
+ *   mode 'nohup':     backgrounded workload trying to outlive its host
+ *
+ * The long-running workload is node (not sleep/nohup): the RFC 0006 runtime
+ * allowlist only grants the SDK runtime binaries (node, sh, unshare) plus the
+ * workspace, so coreutils exec is correctly denied under confinement. An idle
+ * node process is the allowlisted long-running workload the reaper targets.
  */
 import { Sandbox } from '../../index.js';
 import * as fs from 'fs';
@@ -51,14 +56,20 @@ async function main(): Promise<void> {
   let command: string;
   let pidFile: string;
   if (mode === 'nohup') {
-    command = "nohup sh -c 'sleep 600 & echo $! > sleep.pid; wait' >/dev/null 2>&1 & echo $! > shell.pid; wait";
-    pidFile = 'sleep.pid';
+    // Background a node workload that outlives its host. node writes its own
+    // pid; the outer background keeps the sandbox exec alive until the host
+    // is terminated, after which the reaper must still find and kill the
+    // orphaned node by the recorded process group.
+    command =
+      "sh -c 'node -e \"require(\\\"fs\\\").writeFileSync(\\\"workload.pid\\\", String(process.pid)); setInterval(()=>{},1000)\" & wait' & echo $! > shell.pid; wait";
+    pidFile = 'workload.pid';
   } else if (process.platform === 'win32') {
     command = 'node -e "setInterval(()=>{},1000)"';
     pidFile = '';
   } else {
-    command = "sh -c 'sleep 600 & echo $! > sleep.pid; wait'";
-    pidFile = 'sleep.pid';
+    command =
+      "sh -c 'node -e \"require(\\\"fs\\\").writeFileSync(\\\"workload.pid\\\", String(process.pid)); setInterval(()=>{},1000)\" & wait'";
+    pidFile = 'workload.pid';
   }
 
   await sandbox.exec(command, { timeout: 0 });

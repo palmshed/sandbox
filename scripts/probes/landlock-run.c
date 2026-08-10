@@ -23,6 +23,8 @@
  * lines ignored.
  *   r:  READ_FILE | READ_DIR   (read-only data, config, traversal)
  *   rx: READ_FILE | READ_DIR | EXECUTE  (binaries, loader, shared objects)
+ *   w:  WRITE_FILE            (append/discard sinks like /dev/null)
+ *   rw: READ_FILE | WRITE_FILE (read-write data files, dirs get READ_DIR)
  *   x:  EXECUTE                (runner itself; exec-only)
  *
  * Build:  cc -O2 -Wall -Wextra -o landlock-run landlock-run.c
@@ -248,29 +250,37 @@ int main(int argc, char **argv) {
     while (n && (line[n - 1] == '\n' || line[n - 1] == '\r')) line[--n] = 0;
     if (n == 0 || line[0] == '#') continue;
 
-    /* mode is 'r', 'rx', or 'x' followed by ':' then the path. */
+    /* mode is 'r', 'rx', 'rw', or 'x' followed by ':' then the path. */
     int isRx = (n >= 3 && line[0] == 'r' && line[1] == 'x' && line[2] == ':');
+    int isRw = (n >= 3 && line[0] == 'r' && line[1] == 'w' && line[2] == ':');
     int isR  = (n >= 2 && line[0] == 'r' && line[1] == ':');
     int isX  = (n >= 2 && line[0] == 'x' && line[1] == ':');
-    if (!isRx && !isR && !isX) {
+    int isW  = (n >= 2 && line[0] == 'w' && line[1] == ':');
+    if (!isRx && !isRw && !isR && !isX && !isW) {
       skipped++;
       continue;
     }
-    const char *p = line + (isRx ? 3 : 2);
+    const char *p = line + ((isRx || isRw) ? 3 : 2);
     __u64 acc = 0;
     struct stat st;
     int isDir = (stat(p, &st) == 0 && S_ISDIR(st.st_mode));
-    int isFile = (stat(p, &st) == 0 && S_ISREG(st.st_mode));
-    /* READ_DIR is a directory-only right; granting it on a regular file
+    /* READ_DIR is a directory-only right; granting it on a non-directory
      * inode makes landlock_add_rule fail with EINVAL. The right set must
-     * match the target's inode type. */
+     * match the target's inode type (Landlock has no WRITE_DIR: directory
+     * writes are expressed via the MAKE_ and REMOVE_ right families, which
+     * this runner never grants through the allowlist). */
     if (isRx)
       acc = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_EXECUTE |
+            (isDir ? LANDLOCK_ACCESS_FS_READ_DIR : 0);
+    else if (isRw)
+      acc = LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_WRITE_FILE |
             (isDir ? LANDLOCK_ACCESS_FS_READ_DIR : 0);
     else if (isR)
       acc = LANDLOCK_ACCESS_FS_READ_FILE | (isDir ? LANDLOCK_ACCESS_FS_READ_DIR : 0);
     else if (isX)
       acc = LANDLOCK_ACCESS_FS_EXECUTE;
+    else if (isW)
+      acc = LANDLOCK_ACCESS_FS_WRITE_FILE;
     if (acc == 0) {
       if (getenv("LL_VERBOSE"))
         fprintf(stderr, "  [skip] %s: not a file/dir or unparseable\n", p);

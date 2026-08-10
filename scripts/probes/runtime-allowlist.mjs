@@ -11,8 +11,13 @@
  *   - the binary itself and its dynamic loader (interpreter),
  *   - every link-time shared object resolved by ldd,
  *   - runtime data files the loader/libc need before exec (ld.so.cache,
- *     nsswitch, passwd, resolv.conf, hosts, group, zoneinfo, locale),
+ *     localtime, zoneinfo, openssl.cnf, locale),
  *   - the directories that must be traversable/readable to reach them.
+ *
+ * Sensitive host/system files (/etc/passwd, /etc/group, /etc/hosts,
+ * /etc/resolv.conf, /etc/nsswitch.conf) are intentionally NOT granted:
+ * node and sh start and run without them, and granting them would nullify
+ * the RFC 0006 E1 read-denial guarantee for world-readable system files.
  *
  * Everything else is denied. The allowlist is READ-ONLY except the workspace,
  * which the caller grants separately (the Native backend grants rwx on the
@@ -116,19 +121,23 @@ async function main() {
   OUT.dirsReadExec = [...dirSet].sort();
 
   // Runtime data files required before/at exec, read-only. These are the
-  // loader/nss/locale/tz/openssl config paths libc and node touch on launch.
+  // loader/locale/tz/openssl config paths libc and node touch on launch.
+  // Sensitive host/system files (/etc/passwd, /etc/group, /etc/hosts,
+  // /etc/resolv.conf, /etc/nsswitch.conf) are intentionally NOT granted: node
+  // and sh start and run without them, and granting them would nullify the
+  // RFC 0006 E1 read-denial guarantee for world-readable system files.
   const dataCandidates = [
     '/etc/ld.so.cache',
     '/etc/ld.so.preload',
-    '/etc/nsswitch.conf',
-    '/etc/passwd',
-    '/etc/group',
-    '/etc/hosts',
-    '/etc/resolv.conf',
     '/etc/localtime',
     '/usr/share/zoneinfo',
     '/usr/lib/ssl/openssl.cnf',
     '/usr/lib/locale',
+    // /dev/null: POSIX shells redirect a backgrounded job's stdin (and some
+    // shells its stdout) to /dev/null. The open is both read and write, so it
+    // must be granted `rw:`. It is a discard sink (no host data), so granting
+    // it does not weaken the E1 read-denial guarantees.
+    '/dev/null',
     // Node.js "externalized builtins": this distro ships parts of node's
     // internal runtime (cjs-module-lexer, undici, etc.) as JSON/JS files under
     // /usr/share/nodejs/ that node reads at startup.
@@ -268,10 +277,11 @@ async function smoke(bins, dso, dataFiles, dirs) {
   if (!compiled) return 1;
 
   // Allowlist file the runner consumes: `mode:path` per line.
+  // Workspace is NOT in the allowlist file; the runner grants it rwx
+  // explicitly. Data files are read-only except /dev/null, which POSIX
+  // backgrounding opens read+write (`rw:`); it is a discard sink.
   const lines = [
-    // Workspace is NOT in the allowlist file; the runner grants it rwx
-    // explicitly. Data files are read-only.
-    ...dataFiles.map((f) => `r:${f}`),
+    ...dataFiles.map((f) => (f === '/dev/null' ? `rw:${f}` : `r:${f}`)),
     ...bins.map((b) => `rx:${b}`),
     ...dso.map((d) => `rx:${d}`),
     ...dirs.map((d) => `r:${d}`),
@@ -308,34 +318,46 @@ async function smoke(bins, dso, dataFiles, dirs) {
   const wsWrite = run('echo in-ws > ws.txt && [ -s ws.txt ] && echo ws-ok', ws);
   record('write inside workspace allowed', wsWrite.code === 0 && wsWrite.out.includes('ws-ok'), wsWrite.err || `exit ${wsWrite.code}`);
 
-  // 4. Reading allowlisted runtime data files is allowed (via allowlisted node).
-  const etcRead = run('node -e "require(\'fs\').readFileSync(\'/etc/hosts\');process.stdout.write(\'etc-ok\')"');
+  // 4. Reading allowlisted runtime data files is allowed (via allowlisted
+  //    node). /etc/ld.so.cache is a granted loader data path; /etc/passwd is
+  //    intentionally NOT granted (see derivation note above).
+  const etcRead = run('node -e "require(\'fs\').readFileSync(\'/etc/ld.so.cache\');process.stdout.write(\'etc-ok\')"');
   record('runtime data file readable', etcRead.code === 0 && etcRead.out.includes('etc-ok'), etcRead.err || `exit ${etcRead.code}`);
 
   // 5. Exec of an unallowlisted binary is denied.
   const nope = run('/bin/cat /etc/hosts');
   record('unallowlisted exec denied', nope.code !== 0, nope.err || `exit ${nope.code}`);
 
-  // 6. Writing outside the workspace is denied (shell redirection => open for
+  // 6. Backgrounded compound commands work: POSIX shells open /dev/null for
+  //    an asynchronous list's stdin, which the allowlist grants `rw:`. A
+  //    denied open here breaks every `cmd & wait` pattern.
+  const bg = run('node -p "42+1" & wait $!');
+  record('backgrounded compound works (/dev/null rw)', bg.code === 0 && bg.out.includes('43'), bg.err || `exit ${bg.code}`);
+
+  // 7. Writing outside the workspace is denied (shell redirection => open for
   //    write outside the allowlist fails).
   const outWrite = run(`echo evil > ${JSON.stringify(path.join(work, 'evil.txt'))}`);
   record('write outside workspace denied', outWrite.code !== 0, outWrite.err || `exit ${outWrite.code}`);
 
-  // 7. Reading outside the workspace is denied (allowlisted node, forbidden path).
+  // 8. Reading outside the workspace is denied (allowlisted node, forbidden path).
   const outRead = run(`node -e "require('fs').readFileSync(process.argv[1])" ${JSON.stringify(secrets)}`);
   record('read outside workspace denied', outRead.code !== 0 && !outRead.out.includes('TOP-SECRET'), outRead.err || `exit ${outRead.code}`);
 
-  // 8. Data files are read-only (open for append denied).
+  // 9. Data files are read-only (open for append denied).
   const ro = run('echo x >> /etc/hosts');
   record('data files read-only', ro.code !== 0, ro.err || `exit ${ro.code}`);
 
-  // 9. Descendants inherit the confinement across fork+exec: a node child that
+  // 10. Descendants inherit the confinement across fork+exec: a node child that
   //    re-execs itself still cannot read the forbidden path.
   const desc = run(`node -e 'const{spawnSync}=require("child_process");const r=spawnSync(process.execPath,["-e","try{require(\\"fs\\").readFileSync(process.argv[1]);process.exit(9)}catch(e){process.exit(0)}",${JSON.stringify(secrets)}]);process.exit(r.status===0?0:9)'`);
   record('descendant re-exec inherits denial', desc.code === 0, desc.err || `exit ${desc.code}`);
 
-  // 10. Read via shell redirection (builtin open) of a forbidden path fails.
-  // 11. Network-restricted composition (RFC 0004 + RFC 0006): the production
+  // 11. Read via shell redirection (builtin open, no exec) of a forbidden
+  //     path fails: `read` is a sh builtin, so only the open can be denied.
+  const redir = run('if read -r line < /etc/passwd; then echo leak; else echo denied; fi');
+  record('read via shell redirection denied', redir.code === 0 && redir.out.includes('denied'), redir.err || `exit ${redir.code}`);
+
+  // 12. Network-restricted composition (RFC 0004 + RFC 0006): the production
   //     spawn path is `unshare -n --user --map-root-user -- <cmd>`. The
   //     confined runner must be usable AS the target of unshare, proving
   //     `unshare (unconfined) -> landlock-run (restricts) -> sh` composes:
@@ -359,7 +381,7 @@ async function smoke(bins, dso, dataFiles, dirs) {
     const netwrapOk = netwrap('/bin/sh', ['-c', 'echo netbox-ok']);
     record('unshare wrapper -> confined runner composes', netwrapOk.code === 0 && netwrapOk.out.includes('netbox-ok'), netwrapOk.err || `exit ${netwrapOk.code}`);
 
-    // 12. The composed path still enforces the allowlist (read outside denied
+    // 13. The composed path still enforces the allowlist (read outside denied
     //     when reached through the unshare wrapper). node is the direct target
     //     of unshare -> landlock-run, so no shell layer mangles the args.
     const netdeny = netwrap('node', ['-e', "require('fs').readFileSync(process.argv[1])", secrets]);

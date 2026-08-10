@@ -242,31 +242,46 @@ New artifacts, enabled by the RFC's design gate:
   (the SDK runtime), the shell, and `unshare` (the network-restricted spawn
   path), it resolves each with `ldd` to collect the dynamic loader, every
   link-time shared object, and the data files libc/OpenSSL/zoneinfo need
-  before exec (`ld.so.cache`, `nsswitch.conf`, `passwd`/`group`,
-  `resolv.conf`, `hosts`, `localtime`, `zoneinfo`, `openssl.cnf`, node's
+  before exec (`ld.so.cache`, `localtime`, `zoneinfo`, `openssl.cnf`, node's
   externalized builtins under `/usr/share/nodejs`, locale). Everything else is
-  denied.
+  denied. `/dev/null` is granted `rw:` (the sole write-capable entry): POSIX
+  shells open it read+write for a backgrounded job's stdin, and a denied open
+  breaks every `cmd & wait` compound. It is a discard sink, so the grant does
+  not weaken read-denial guarantees. The derivation was empirically observed:
+  node and sh start and run WITHOUT the NSS/DNS system files, so
+  `/etc/passwd`, `/etc/group`, `/etc/hosts`, `/etc/resolv.conf`, and
+  `/etc/nsswitch.conf` are intentionally NOT granted (granting them
+  world-readable would nullify the E1 read-denial guarantee). Under
+  confinement, name lookups that need them (`os.userInfo()`, hostname
+  resolution) fail with `EACCES`; that is a documented residual, not a
+  mechanism leak.
 - `scripts/probes/landlock-run.c`: the reusable confinement trampoline the
   implementation will build on. It handles every filesystem right the ABI
   supports (no silent subsetting), grants full access to the workspace only,
-  grants the derived allowlist read-only (rights chosen per inode type:
-  `READ_DIR` is directory-only, granting it on a file inode is `EINVAL`),
-  applies `PR_SET_NO_NEW_PRIVS` then `landlock_restrict_self` (irrevocable,
-  inherited by descendants), and `execvp`s the workload. If Landlock is
-  unavailable or restriction fails it exits non-zero WITHOUT running the
-  workload: never a silent fallback.
+  grants the derived allowlist (rights chosen per inode type: `READ_DIR` is
+  directory-only, granting it on a file inode is `EINVAL`; modes `r`/`rx`/
+  `rw`/`x`, where `rw` is used only for `/dev/null`), applies
+  `PR_SET_NO_NEW_PRIVS` then `landlock_restrict_self` (irrevocable, inherited
+  by descendants), and `execvp`s the workload. If Landlock is unavailable or
+  restriction fails it exits non-zero WITHOUT running the workload: never a
+  silent fallback.
 
 Smoke run (`node scripts/probes/runtime-allowlist.mjs --smoke`) against the
-same Ubuntu 24.04 kernel 6.8.0 host, 11/11 checks passed with generated
+same Ubuntu 24.04 kernel 6.8.0 host, 13/13 checks passed with generated
 `EACCES` evidence: shell starts and executes; node starts and executes;
 write inside the workspace allowed; allowlisted runtime data readable;
-unallowlisted exec denied; write outside the workspace denied; read outside
-the workspace denied; data files read-only; descendant re-exec inherits the
-denial; and the production `unshare -n --user --map-root-user -- <cmd>`
-network-restricted composition works with the runner as the unshare target,
-still denying outside reads. This proves the mechanism AND the allowlist
-composition; the escape suite against the real Native backend is still
-required before promoting `osFilesystemIsolation: supported`.
+unallowlisted exec denied; backgrounded compound commands work (POSIX shells
+open `/dev/null` read+write for an asynchronous list, granted `rw:`);
+write outside the workspace denied; read outside the workspace denied; data
+files read-only; descendant re-exec inherits the denial; and the production
+`unshare -n --user --map-root-user -- <cmd>` network-restricted composition
+works with the runner as the unshare target, still denying outside reads.
+ This proves the mechanism AND the allowlist composition. The full escape
+suite (`sandbox.test.ts` `osfilesystem` group) then passed 15/15 against the
+real Native backend on the same Ubuntu 24.04 kernel 6.8.0 host (ABI 4),
+including `/etc/passwd`/`/etc/group`/`/etc/hosts` read denials, symlink and
+directory-traversal escapes, and workspace-read/write: the basis for
+reporting `osFilesystemIsolation: supported` at runtime on that host.
 
 ## Design Decision Gate (this RFC does not implement)
 

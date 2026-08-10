@@ -43,9 +43,13 @@ out per-execution; a sandbox may opt out explicitly with
 `Sandbox.create({ osFilesystemIsolation: false })`.
 
 **Declared residuals**: Landlock is path-based and does not hide `/proc` or
-`/sys`; reads of those trees may remain visible to the host user. OS-level
-isolation is not a defense against kernel exploits or privileged device-node
-attacks.
+`/sys`; reads of those trees may remain visible to the host user. The runtime
+allowlist intentionally excludes the NSS/DNS system files (`/etc/passwd`,
+`/etc/group`, `/etc/hosts`, `/etc/resolv.conf`, `/etc/nsswitch.conf`), so name
+lookups that read them (`os.userInfo()`, hostname resolution) fail with
+`EACCES` under confinement; this is a documented degradation, not an escape.
+OS-level isolation is not a defense against kernel exploits or privileged
+device-node attacks.
 
 ## Environment Contract
 

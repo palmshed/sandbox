@@ -13,8 +13,15 @@
  *   - every link-time shared object resolved by `ldd -v`,
  *   - the directories that must be traversable/readable to reach them,
  *   - the runtime data files libc/OpenSSL/zoneinfo/node need before exec
- *     (ld.so.cache, nsswitch, passwd, hosts, resolv.conf, localtime, zoneinfo,
- *     openssl.cnf, locale, node externalized builtins).
+ *     (ld.so.cache, localtime, zoneinfo, openssl.cnf, locale, node
+ *     externalized builtins).
+ *
+ * Sensitive host/system files (/etc/passwd, /etc/group, /etc/hosts,
+ * /etc/resolv.conf, /etc/nsswitch.conf) are intentionally NOT granted: node
+ * and sh start and run without them, and granting them would nullify the RFC
+ * 0006 E1 read-denial guarantee for world-readable system files. Workloads
+ * that call os.userInfo() or resolve hostnames therefore fail those specific
+ * lookups with EACCES under confinement (documented residual in RFC 0006).
  *
  * Everything else is denied by the confinement ruleset. The workspace is
  * granted separately (rwx) by the runner, never through this allowlist.
@@ -22,6 +29,8 @@
  * Emits the runner's `mode:path` allowlist-file format:
  *   r:  READ_FILE | READ_DIR   (read-only data, config, traversal)
  *   rx: READ_FILE | READ_DIR | EXECUTE  (binaries, loader, shared objects)
+ *   rw: READ_FILE | WRITE_FILE (only /dev/null, for backgrounded-job
+ *                              stdin/stdout redirection; a discard sink)
  *   x:  EXECUTE                (exec-only)
  */
 
@@ -166,15 +175,15 @@ export function deriveRuntimeAllowlist(bins: string[]): DerivedAllowlist {
   const dataCandidates = [
     '/etc/ld.so.cache',
     '/etc/ld.so.preload',
-    '/etc/nsswitch.conf',
-    '/etc/passwd',
-    '/etc/group',
-    '/etc/hosts',
-    '/etc/resolv.conf',
     '/etc/localtime',
     '/usr/share/zoneinfo',
     '/usr/lib/ssl/openssl.cnf',
     '/usr/lib/locale',
+    // /dev/null: POSIX shells redirect a backgrounded job's stdin (and some
+    // shells its stdout) to /dev/null. The open is both read and write, so it
+    // must be granted `rw:`. It is a discard sink (no host data), so granting
+    // it does not weaken the E1 read-denial guarantees.
+    '/dev/null',
     // Node.js "externalized builtins": distro node ships parts of its internal
     // runtime (cjs-module-lexer, undici, ...) as JSON/JS files under
     // /usr/share/nodejs that node reads at startup.
@@ -204,8 +213,10 @@ export function deriveRuntimeAllowlist(bins: string[]): DerivedAllowlist {
   };
 
   // Emit in the runner's allowlist-file order (dedup preserves first use).
+  // Most data files are read-only (`r:`); /dev/null is the exception and gets
+  // `rw:` so backgrounded-job stdin/stdout redirection can open it.
   const all = [
-    ...dataFiles.map((f): string => `r:${f}`),
+    ...dataFiles.map((f): string => (f === '/dev/null' ? `rw:${f}` : `r:${f}`)),
     ...resolved.map((b): string => `rx:${b}`),
     ...[...dsoSet].sort().map((d): string => `rx:${d}`),
     ...[...dirSet].sort().map((d): string => `r:${d}`),
