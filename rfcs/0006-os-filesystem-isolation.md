@@ -1,7 +1,7 @@
 # RFC 0006: OS-Level Filesystem Isolation
 
 - **Author**: Palmshed Team
-- **Status**: Implemented (capability probe + Native backend confinement + escape suite; CI validation of the Linux Landlock chain pending). `supported` is only ever reported at runtime on hosts where the mechanism passes the adversarial tests
+- **Status**: Implemented for Linux (capability probe + Native backend confinement + escape suite; full suite 59/59 and escape suite 15/15 under confinement on Ubuntu 24.04 kernel 6.8.0, Landlock ABI 4). Platform coverage is **Linux-only for v1.0** by decision: macOS is deferred as a post-v1.0 follow-up (Seatbelt filesystem profile, see "Platform Strategy"); Windows is `unsupported` with the technical rationale recorded (see "Windows"). `supported` is only ever reported at runtime on hosts where the mechanism passes the adversarial tests
 - **Created**: 2026-08-09
 - **Specifies**: new capability `osFilesystemIsolation` (`spec/capabilities.schema.json`); interacts with the existing VFS boundary (RFC 0003) and `network: 'disabled'` (RFC 0004)
 
@@ -128,31 +128,31 @@ Same discipline as RFC 0004: investigate, probe, then decide. No pretending equi
 - **seccomp alone**: filters syscalls, not paths; cannot express "deny `/etc`". Rejected as the mechanism (could be a defense-in-depth layer later).
 - **`firejail`**: external system dependency; the runtime targets zero system dependencies. Rejected for now (matches RFC 0004).
 
-### macOS: Seatbelt (feasibility evaluation)
+### macOS: Seatbelt (post-v1.0 follow-up, not promised)
 
-**Candidate: Seatbelt profile via `sandbox-exec`** (the same mechanism RFC 0004 already proven for network isolation).
+**Candidate: Seatbelt profile via `sandbox-exec`** (the same mechanism RFC 0004 already proven for network isolation). **Decision (2026-08-10): recorded as a post-v1.0 follow-up. The capability remains `unknown` on macOS and this RFC promises no support.**
 
 - **Feasibility**: Seatbelt supports filesystem filters (`(deny file-read*)` / `(allow file-read* (subpath "/usr"))` etc.), which is exactly the allowlist/denylist structure we need for G1-G3. It is applied per-process, inherited by descendants, and unprivileged.
 - **Precedent**: RFC 0004 already uses `sandbox-exec` in production for `network: 'disabled'`; applying a filesystem profile is the same API. The `nono` tooling uses Seatbelt for macOS filesystem sandboxing.
 - **Caveats/risks**: `sandbox-exec` is deprecated by Apple and could break on a future macOS; Seatbelt profiles are additive and a `(deny default)` profile must still allow the essential exec/read paths for the runtime allowlist. The macOS filesystem rules cannot hide `/proc` (no `/proc` on macOS) but `/dev` and other pseudo-filesystems are accessible to the host user; declared residual.
-- **Decision gate**: probe the profile on macOS 26.x, confirm `node` and `sh` workloads run under a strict workdir-only filesystem profile (allow the runtime allowlist, deny everything else), and confirm the adversarial tests pass. If the profile support degrades, mark `unknown`.
+- **Why deferred**: the Linux-only v1.0 position keeps the security guarantee honest. If someone later implements the Seatbelt filesystem profile and the full E1-E10 adversarial suite passes on macOS CI, the additive capability can simply become `supported` there without a spec change. Until then, macOS reports `unknown` and callers must not build security policy on it.
 
-### Windows: AppContainer (evaluate or mark unsupported)
+### Windows: `unsupported` (rationale recorded)
 
-**Candidate: Windows AppContainer sandbox.**
+**Decision (2026-08-10): Windows is `unsupported` for v1.0. The available unprivileged mechanisms cannot satisfy this RFC's read-denial guarantee, so the guarantee is not weakened to achieve cross-platform symmetry.**
 
-- **Feasibility**: AppContainer is the modern Windows isolation primitive (used by Edge, UWP); it provides per-app data isolation via a restricted token and profile, including filesystem redirection and denial of host-user paths. However, creating an AppContainer and assigning a process to it programmatically from an unprivileged process is non-trivial; the patterns involve `CreateAppContainerProfile`, restricted SIDs, `GetAppContainerNamedObjectPath`, and lowbox token creation, which historically require care and often designed-for-it binaries.
-- **Alternative: restricting token with explicit file ACLs**: build a restricted token (no groups, no write access) and run the workload token with ACLs that allow only the workspace; this is closer to what the Native backend already does for process isolation and may be achievable without a full AppContainer, but its filesystem confinement is weaker (default-allow outside the workspace unless the token strips general access) and needs dedicated validation.
-- **Honest default**: until one of the two paths is probed and the adversarial tests pass, **Windows must be marked `unsupported` with no implied equivalent**. RFC 0004's precedent is to prefer an honest `unsupported` over a pretending `supported`. This RFC commits only to evaluating AppContainer/restricted-token as a later work item and declaring the outcome, not to a date.
+- **AppContainer**: the modern Windows isolation primitive (used by Edge, UWP) does provide real read isolation, but per-path filesystem grants are expressed in a **package identity/manifest** (`CreateAppContainerProfile` without a packaged-app identity cannot carry the `<rescap>` filesystem-capability grants). That identity model is unusable for arbitrary CLI processes the SDK spawns; the SDK would need a packaged-app host. Creating an AppContainer and assigning a process to it programmatically from an unprivileged process is also non-trivial (`CreateAppContainerProfile`, restricted SIDs, `GetAppContainerNamedObjectPath`, lowbox token creation), and the resulting filesystem confinement is weak unless the profile grants are expressible.
+- **Restricted token + mandatory integrity levels**: a restricted token (no groups, Low integrity) and explicit workspace ACLs reliably deny **writes, creation, and traversal** outside the workspace, but they **cannot deny reads of world-readable files**. NTFS DACLs allow `Everyone:Read` on such files, so `/etc/passwd`-equivalent (E1) and `$HOME`-adjacent reads remain possible at Low integrity. That fails G1/E1, the core read-denial guarantee this RFC exists to provide.
+- **Honest default**: until a mechanism that denies world-readable reads is probed and passes the adversarial tests, **Windows must remain `unsupported` with no implied equivalent**. RFC 0004's precedent is to prefer an honest `unsupported` over a pretending `supported`. Re-evaluating AppContainer within a packaged-app host (or a future per-file ACL hardening pass) is a later work item; this RFC records the outcome, not a date.
 
-### Platform matrix (target declarations)
+### Platform matrix (v1.0 declarations, 2026-08-10)
 
 | Platform | Primitive | Declared OS-filesystem isolation |
 |---|---|---|
-| Linux (kernel 5.13+, Landlock LSM enabled) | Landlock ruleset (workspace rwx + runtime read/exec allowlist, else deny) | **supported** (pending probe + adversarial tests) |
+| Linux (kernel 5.13+, Landlock LSM enabled) | Landlock ruleset (workspace rwx + runtime read/exec allowlist, else deny) | **supported** (validated: escape suite 15/15, full SDK suite 59/59 under confinement on Ubuntu 24.04 kernel 6.8.0 ABI 4) |
 | Linux (pre-5.13 or Landlock unavailable) | None | **unknown** (fallback to ambient rights, declared) |
-| macOS | Seatbelt filesystem profile via `sandbox-exec` | **pending validation**; `supported` only after adversarial tests pass |
-| Windows | AppContainer / restricted token (non-trivial) | **unsupported** until evaluated and validated |
+| macOS | Seatbelt filesystem profile via `sandbox-exec` | **unknown** (post-v1.0 follow-up; `supported` only after the full E1-E10 suite passes on macOS CI) |
+| Windows | None (AppContainer / restricted-token read limits) | **unsupported** (rationale recorded above; no implied equivalent) |
 
 ## Adversarial Test Plan (to implement)
 

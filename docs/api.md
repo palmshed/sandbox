@@ -82,7 +82,7 @@ if (sandbox.capabilities.osFilesystemIsolation === 'supported') {
 
 - **How it works (Linux)**: each execution runs through a Landlock confinement runner launched behind `unshare --user --map-root-user` (needed for the unprivileged `CAP_SYS_ADMIN`). The runner applies an irrevocable ruleset (workspace full access, runtime allowlist read/exec, everything else denied) and then execs the workload. `unknown` and `unsupported` mean no OS-filesystem confinement is enforced: treat them as ambient host rights.
 - **Opt-out**: `Sandbox.create({ osFilesystemIsolation: false })` disables the mechanism for that sandbox even when supported. This is an explicit, documented opt-out (e.g. workloads that need `npm` or arbitrary host binaries), never a silent downgrade.
-- **Platforms**: Linux with Landlock ABI >= 2 and unprivileged user namespaces reports `supported`; macOS reports `unknown` (Seatbelt filesystem profile is pending validation); Windows and others report `unsupported`.
+- **Platforms**: Linux with Landlock ABI >= 2 and unprivileged user namespaces reports `supported`; macOS reports `unknown` (Seatbelt filesystem profile is deferred as a post-v1.0 follow-up, not promised); Windows and others report `unsupported`.
 - **Residuals**: `/proc` and `/sys` are not hidden by Landlock (path-based mechanism). Name lookups that read the NSS files (`os.userInfo()`, hostname resolution) fail with `EACCES` because `/etc/passwd`, `/etc/group`, `/etc/hosts`, `/etc/resolv.conf`, and `/etc/nsswitch.conf` are intentionally NOT in the runtime allowlist (granting them would allow exfiltrating world-readable system files). Runtime allowlist and residuals are documented in `rfcs/0006-os-filesystem-isolation.md`.
 
 ### `sandbox.backendName`

@@ -32,8 +32,8 @@ kernel level. This is reported as the `osFilesystemIsolation` capability
   probed at `init()` with a real confined self-test before the capability
   reports `supported`. Only `supported` must be treated as an enforced
   boundary; `unknown`/`unsupported` mean ambient host rights.
-- **macOS**: `unknown` (Seatbelt filesystem profile is pending validation).
-- **Windows / other**: `unsupported` (no unprivileged native mechanism).
+- **macOS**: `unknown` (Seatbelt filesystem profile is deferred as a post-v1.0 follow-up, not promised; `supported` only after the escape suite passes there).
+- **Windows / other**: `unsupported` (AppContainer per-path filesystem grants require package identity; restricted tokens cannot deny reads of world-readable files, so the RFC 0006 read-denial guarantee is not met; rationale in RFC 0006).
 
 Adversarial escapes E1-E10 and the threat model are defined in
 `rfcs/0006-os-filesystem-isolation.md`; the escape suite lives in
