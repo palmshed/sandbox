@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/palmshed/sandbox/main/.github/assets/thumbnail.png" alt="sandbox" width="100%">
+</p>
+
 # Palmshed Sandbox (`palmshed/sandbox`)
 
 [![CI](https://github.com/palmshed/sandbox/actions/workflows/ci.yml/badge.svg)](https://github.com/palmshed/sandbox/actions/workflows/ci.yml)
