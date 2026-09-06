@@ -19,12 +19,12 @@
 
 ## Current Status & Stability Expectations
 
-- **SDK Release Version**: `v1.0.0` (Phase 2 complete: process lifecycle, resource enforcement, network isolation)
-- **Runtime Specification**: `1.0.0` (frozen; see [`spec/version.md`](spec/version.md))
-- **Stability**: **Stable**. The runtime contract is frozen at v1.0.0. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md) and changes are gated by the 6-month deprecation policy ([`spec/deprecations.md`](spec/deprecations.md)).
+- **SDK Release Version**: `v1.1.0` (Phase 2 complete: process lifecycle, resource enforcement, network isolation; plus the optional RFC 0006 OS filesystem isolation extension)
+- **Runtime Specification**: `1.1.0` (the 1.0.0 contract stays frozen; 1.1.0 adds only the optional extension; see [`spec/version.md`](spec/version.md))
+- **Stability**: **Stable**. The runtime contract is frozen at v1.0.0 with 1.1.0 adding only the optional extension. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md) and changes are gated by the 6-month deprecation policy ([`spec/deprecations.md`](spec/deprecations.md)).
 - **Network isolation note**: On macOS, `networkIsolation` is `true` (5/5 adversarial leak tests pass). On Linux, it is dynamically probed at `init()`: `true` when unprivileged user namespaces are available, `false` on CI runners where they are restricted (falls back to proxy env vars). On Windows it is `false` (no native unprivileged network isolation; see RFC 0004). The Docker backend reports `networkIsolation`, `cpuLimits`, and `memoryLimits` as `false` until its enforcement is implemented and integration-tested (work item `#4`).
-- **v1.0 security guarantee**: **Native v1.0 provides soft process isolation with a hardened virtual filesystem boundary.** OS-level filesystem isolation for executed workloads is implemented post-v1.0 as an **optional, capability-reported extension** (`osFilesystemIsolation`; RFC 0006, no version bump). Platform status:
-  - **OS-level filesystem isolation** (RFC 0006): implemented for Linux (Landlock + `unshare --user`, runtime-allowlist confinement); reported `supported` only after a real confined self-test. macOS is `unknown` (Seatbelt FS profile pending validation); Windows is `unsupported`
+- **v1.0 security guarantee**: **Native v1.0 provides soft process isolation with a hardened virtual filesystem boundary.** OS-level filesystem isolation for executed workloads ships in v1.1.0 as an **optional, capability-reported extension** (`osFilesystemIsolation`; RFC 0006). Platform status:
+  - **OS-level filesystem isolation** (RFC 0006): implemented for Linux (Landlock + `unshare --user`, runtime-allowlist confinement); reported `supported` only after a real confined self-test. macOS is `unknown` (Seatbelt FS profile deferred post-v1.0); Windows is `unsupported`
   - **Windows network isolation**: unsupported (no native unprivileged mechanism; RFC 0004)
   - **Docker resource/network enforcement**: experimental / deferred; capability flags remain `false` (work item `#4`)
   - **`cpuQuota`**: experimental, not enforced by the Native backend (`cpuTimeLimit` time budgets are enforced)
