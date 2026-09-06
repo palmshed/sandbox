@@ -33,7 +33,13 @@ function main() {
     process.exit(report.finish());
   }
 
-  const entry = manifest[0];
+  // npm pack --dry-run --json emits an array on older npm and an object
+  // keyed by package name on newer npm; accept either shape.
+  const entry = Array.isArray(manifest) ? manifest[0] : manifest[Object.keys(manifest)[0]];
+  if (!entry || !Array.isArray(entry.files)) {
+    report.check('npm pack --dry-run entry', false, 'no package entry with files in npm pack output');
+    process.exit(report.finish());
+  }
   const paths = entry.files.map((f) => f.path);
 
   const required = ['package.json', 'dist/index.js', 'dist/index.d.ts', 'README.md', 'LICENSE'];

@@ -227,7 +227,7 @@ export class DockerBackend implements BackendEngine {
         const metadata = {
           id: execId,
           backend: this.name,
-          specVersion: '1.0.0',
+          specVersion: '1.1.0',
           startedAt: new Date(startTime).toISOString(),
           finishedAt: new Date(finishedAtMs).toISOString(),
           durationMs,

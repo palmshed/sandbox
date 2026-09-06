@@ -121,3 +121,18 @@ Claimable guarantees at v1.0.0:
   is recorded in `execution.metadata().signal`. Caught by the new
   `recovery` production scenario; covered by the existing `fail-then-reuse`
   crash case. No public API or spec schema changes.
+
+## Release v1.1.0 (minor: optional osFilesystemIsolation capability)
+
+Per `spec/compatibility.md` (minor releases carry backward-compatible feature
+additions such as new capabilities), the RFC 0006 work ships as spec and SDK
+version `1.1.0`, an optional extension to the frozen 1.0.0 contract:
+
+- `spec/version.md` reports `1.1.0`; `spec/CHANGELOG.md` carries the `[1.1.0]`
+  entry; SDK `specVersion` metadata reports `1.1.0` on both backends.
+- Tag `v1.1.0` drives `release.yml`: version gate (tag == SDK == spec),
+  full preflight in release mode, GitHub release, npm publish to `latest`,
+  then the registry smoke test against the freshly published package.
+- Post-publish, the consumer harness (`examples/consumer-test/run-published.sh`
+  against the new version) provides the external-consumer evidence that the
+  published artifact advertises the capability surface.

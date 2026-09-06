@@ -1,6 +1,6 @@
 # Sandbox Specification Versioning
 
-Current Specification Version: **1.0.0**
+Current Specification Version: **1.1.0**
 
 ## Versioning Rules
 
@@ -12,11 +12,12 @@ The Palmshed Sandbox specification follows Semantic Versioning (MAJOR.MINOR.PATC
 
 ## Specification Changelog
 
-### Unreleased (backward-compatible additions to the frozen 1.0.0 contract)
+### v1.1.0 (optional OS filesystem isolation capability)
 
 `osFilesystemIsolation` is an **optional capability extension** to the frozen
-1.0.0 specification. Its presence does not change the 1.0.0 contract and does
-not require a version bump. The capability is reported (never assumed) as a
+1.0.0 contract (RFC 0006, Linux-only for v1.0: Landlock confinement runner
+plus runtime allowlist on the Native backend). Its presence does not change
+the 1.0.0 contract: the capability is reported (never assumed) as a
 tri-state string, and backends that cannot provide OS-level filesystem
 isolation simply report `unsupported` or `unknown`. If the capability later
 changes the core execution contract or becomes mandatory, that warrants a
