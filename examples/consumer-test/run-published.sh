@@ -44,6 +44,14 @@ done
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SUITE_DIR="$ROOT/examples/consumer-test"
 
+# Resolve a relative evidence path against the invocation directory now: the
+# suite runs inside the temp consumer project, so a relative path would land
+# there instead of where the caller expects it.
+case "$EVIDENCE" in
+  ""|/*|[A-Za-z]:*) ;;
+  *) EVIDENCE="$PWD/$EVIDENCE" ;;
+esac
+
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/palmshed-published-consumer.XXXXXX")"
 cleanup() {
   if [ "$KEEP" -eq 0 ]; then
