@@ -78,8 +78,9 @@ sandbox/
 │   ├── crash/             # Crash recovery repros (RFC 0005; host-crash reaping)
 │   └── run.js             # Runs all repros; use --verbose for output
 ├── examples/              # Usage examples and scripts
-│   ├── consumer-test/     # Isolated consumer integration test (built from npm pack)
-│   │   └── run.sh         # Reproducible: build + pack + install + test
+│   ├── consumer-test/     # Isolated consumer integration test (shared verify.ts suite)
+│   │   ├── run.sh         # Reproducible: build + pack + install + test (packed provenance)
+│   │   └── run-published.sh # npm provenance: registry tarball into a temp consumer project
 │   └── README.md          # Usage examples overview
 ├── production/            # Production Validation Suite (packed-artifact end-to-end gates)
 │   ├── run.mjs            # Scenario runner (--list / --only / --verbose, residue checks)

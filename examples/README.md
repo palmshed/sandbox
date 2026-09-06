@@ -6,7 +6,7 @@ This directory contains standalone usage scripts demonstrating Palmshed Sandbox 
 - `ai-agent-runner.mjs`: Simulates an AI agent executing generated (untrusted) code inside a sandbox with timeout enforcement and streaming output.
 - `code-evaluator.mjs`: Simulates a code evaluation system running multiple submissions with pass/fail/timeout collection.
 - `ci-runner.mjs`: Simulates a CI build/test environment: uploads a workspace into the sandbox filesystem, runs `npm run build` and `npm test` with streamed output, collects artifacts via `downloadFile`, then exercises a failing workload and a timed-out workload to prove sandbox reuse after both.
-- `consumer-test/`: Isolated integration test that verifies the public API against a packed `@palmshed/sandbox` tarball (not workspace source). Run with `consumer-test/run.sh`.
+- `consumer-test/`: Isolated integration test that verifies the public API against the installed `@palmshed/sandbox` package (not workspace source) in two provenances: `consumer-test/run.sh` builds and packs the workspace (packed provenance), while `consumer-test/run-published.sh` downloads the published npm artifact into a clean temp consumer project (npm provenance). Both run the shared `src/verify.ts` suite.
 
 All examples import the `@palmshed/sandbox` package name and resolve it from `node_modules`, exactly like an external consumer. To run them locally, build the SDK, pack it, and install the tarball into the repo root:
 

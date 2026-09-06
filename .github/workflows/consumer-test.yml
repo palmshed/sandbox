@@ -36,11 +36,16 @@ jobs:
       - name: Run isolated consumer integration test (tarball)
         run: node scripts/verify-consumer.mjs
 
-  # Phase 1: verify installation directly from the npm registry (not a local
-  # tarball). This checks that the published package is installable and that
-  # the public API surface works for an external consumer.
-  registry-install:
-    runs-on: ubuntu-latest
+  # Published-package consumer suite: download the real npm artifact, install
+  # it into a clean temporary consumer project, and run the shared verify.ts
+  # suite (same scenarios as the tarball job, npm provenance). The package
+  # spec defaults to @latest, which is what an external consumer installs.
+  # Evidence is uploaded per platform.
+  registry-consumer:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
@@ -49,25 +54,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install @palmshed/sandbox from npm registry (beta tag)
-        run: |
-          mkdir -p /tmp/registry-consumer && cd /tmp/registry-consumer
-          npm init -y > /dev/null
-          npm install @palmshed/sandbox@beta --no-audit --no-fund
+      - name: Run published-package consumer suite
+        shell: bash
+        run: bash examples/consumer-test/run-published.sh --package @palmshed/sandbox@latest --evidence "consumer-evidence-${{ matrix.os }}.json"
 
-      - name: Verify registry package exports and execution
-        run: |
-          cd /tmp/registry-consumer
-          node -e "
-            const { Sandbox } = require('@palmshed/sandbox');
-            (async () => {
-              const s = await Sandbox.create({ backend: 'native', timeout: 5000 });
-              const e = await s.exec('echo registry-ok');
-              await e.wait();
-              if (e.exitCode !== 0 || !/registry-ok/.test(e.stdout())) {
-                throw new Error('registry package execution failed');
-              }
-              console.log('registry install OK, version=' + require('@palmshed/sandbox/package.json').version);
-              await s.destroy();
-            })().catch((err) => { console.error(err); process.exit(1); });
-          "
+      - name: Upload consumer evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: consumer-evidence-${{ matrix.os }}
+          path: consumer-evidence-${{ matrix.os }}.json
+          if-no-files-found: error
+          retention-days: 30
