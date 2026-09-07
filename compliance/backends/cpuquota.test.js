@@ -281,6 +281,49 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
         await control.destroy();
       }
     });
+
+    await t.test('per-exec override throttles then restores', async () => {
+      const plain = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 120000 });
+      try {
+        const controlWall = await burnWall(plain, ITER_BURN);
+        const start = Date.now();
+        const throttled = await plain.exec(ITER_BURN, { cpuQuota: 0.5 });
+        await throttled.wait();
+        assert.equal(throttled.status(), 'completed');
+        const throttledWall = Date.now() - start;
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `override throttles this execution (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+        const control = await plain.exec(ITER_BURN);
+        await control.wait();
+        assert.equal(control.status(), 'completed');
+      } finally {
+        await plain.destroy();
+      }
+    });
+
+    await t.test('quota plus budget still dies by budget', async () => {
+      const { SandboxResourceError } = await import('../../sdk/typescript/dist/index.js');
+      await assert.rejects(
+        (async () => {
+          const execution = await sandbox.exec(`node -e "while(true){}"`, {
+            cpuTimeLimit: 5000,
+            timeout: 120000,
+          });
+          await execution.wait();
+        })(),
+        (err) => err instanceof SandboxResourceError && err.code === 'ERR_CPU_EXCEEDED'
+      );
+    });
+
+    await t.test('non-positive quotas mean unset', async () => {
+      for (const quota of [0, -1, NaN]) {
+        const execution = await sandbox.exec(ITER_BURN, { cpuQuota: quota });
+        await execution.wait();
+        assert.equal(execution.status(), 'completed', `quota ${String(quota)} runs unenforced`);
+      }
+    });
   });
 
   await t.test('docker rate enforcement', async (t) => {

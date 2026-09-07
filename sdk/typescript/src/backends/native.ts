@@ -27,6 +27,12 @@ import {
   removeSandboxCgroup,
   isProcessAlive,
 } from '../cgroups/cpu-quota.js';
+import {
+  probeQuotaJobSupport,
+  QuotaJobHelper,
+  quotaCoresToRate,
+  hostCpuCores,
+} from '../winjob/quota-job.js';
 
 /**
  * Read the current Windows process table via PowerShell CIM (the replacement
@@ -98,6 +104,12 @@ export class NativeBackend implements BackendEngine {
   private appliedCpuQuota: number | null = null;
   /** Serializes quota override dances (apply, exec, restore) within one sandbox */
   private cpuQuotaChain: Promise<void> = Promise.resolve();
+  /** RFC 0007 Windows Job Object host capability, probed once per process */
+  private static quotaProbeResult: boolean | null = null;
+  /** Per-sandbox persistent helper (Windows only, lazy on first quota need) */
+  private quotaHelper: QuotaJobHelper | null = null;
+  /** Job id inside the helper once created (Windows only) */
+  private quotaJobId: string | null = null;
   /** Crash-recovery exit/signal cleanup bound to this instance (RFC 0005) */
   private crashCleanup: (() => void) | null = null;
 
@@ -166,6 +178,21 @@ export class NativeBackend implements BackendEngine {
       // the repro suite skip network assertions instead of failing them.
       this.networkIsolationAvailable = false;
       this.capabilities.networkIsolation = false;
+      // RFC 0007: probe Job Object rate control once per process (full live
+      // proof: create, set, assign a sleeper, read back). Host capability is
+      // stable within a process, so later inits reuse the cached verdict and
+      // pay no per-sandbox PowerShell cost here; per-sandbox jobs are created
+      // lazily on first quota need.
+      if (NativeBackend.quotaProbeResult === null) {
+        try {
+          NativeBackend.quotaProbeResult = await probeQuotaJobSupport();
+        } catch {
+          NativeBackend.quotaProbeResult = false;
+        }
+      }
+      if (NativeBackend.quotaProbeResult === true) {
+        this.capabilities.cpuQuotaLimits = true;
+      }
     }
 
     // RFC 0006: probe OS-level filesystem isolation. On Linux this compiles the
@@ -273,7 +300,7 @@ export class NativeBackend implements BackendEngine {
     // below and never masks the execution outcome.
     const execQuota = this.resolveCpuQuotaCores(options.cpuQuota);
     const defaultQuota = this.resolveCpuQuotaCores();
-    let quotaRestore: (() => void) | null = null;
+    let quotaRestore: (() => void) | (() => Promise<void>) | null = null;
     if (this.cpuCgroupPath !== null && execQuota !== this.appliedCpuQuota) {
       const previous = this.cpuQuotaChain;
       let release!: () => void;
@@ -301,6 +328,52 @@ export class NativeBackend implements BackendEngine {
           // Never mask the execution result. The mirror keeps the stale
           // value, so the next dance retries the restore instead of running
           // under a wrong limit silently.
+          logDebug('resource.restoreFailed', {
+            backend: this.name,
+            resource: 'cpuQuota',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          release();
+        }
+      };
+    }
+
+    // RFC 0007 Windows: same override dance through the job helper. The job
+    // is created lazily here when an override needs it on a quota-less
+    // sandbox; creation failure rejects before exec (never run uncapped
+    // under a true flag). Restore is async (helper round trip) and runs in
+    // the settlement wrapper below without masking the outcome.
+    if (
+      process.platform === 'win32' &&
+      this.capabilities.cpuQuotaLimits === true &&
+      execQuota !== this.appliedCpuQuota
+    ) {
+      const previous = this.cpuQuotaChain;
+      let release!: () => void;
+      const current = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      this.cpuQuotaChain = current;
+      await previous;
+      try {
+        await this.ensureQuotaJob();
+        await this.setJobRate(execQuota);
+        this.appliedCpuQuota = execQuota;
+      } catch (err) {
+        release();
+        throw err instanceof SandboxError
+          ? err
+          : new SandboxError(
+              `Failed to apply CPU quota override: ${err instanceof Error ? err.message : String(err)}`,
+              'EXEC_FAILED'
+            );
+      }
+      quotaRestore = async () => {
+        try {
+          await this.setJobRate(defaultQuota);
+          this.appliedCpuQuota = defaultQuota;
+        } catch (err) {
           logDebug('resource.restoreFailed', {
             backend: this.name,
             resource: 'cpuQuota',
@@ -662,6 +735,21 @@ export class NativeBackend implements BackendEngine {
           }
         }
       }
+      // RFC 0007 Windows: assign the spawned root to the sandbox job when a
+      // quota is active for this execution. Children auto-join after
+      // assignment, so the whole tree throttles. The future reconciles at
+      // settlement (close funnel below): fast exits resolve normally, while
+      // a failed assignment on a live child rejects honestly.
+      let quotaAssign: Promise<void> | null = null;
+      let quotaAssignError: unknown = null;
+      if (this.quotaJobId !== null && execQuota !== null && child.pid !== undefined) {
+        quotaAssign = this.assignExecToJob(child).then(
+          () => undefined,
+          (err: unknown) => {
+            quotaAssignError = err;
+          }
+        );
+      }
       logDebug('exec.start', {
         backend: this.name,
         pid: child.pid ?? null,
@@ -924,6 +1012,30 @@ export class NativeBackend implements BackendEngine {
           return;
         }
 
+        // RFC 0007 Windows: reconcile the job assignment before classifying.
+        // Fast exits resolve through their real outcome below (the assign
+        // helper skips dead processes silently); a failed assignment on a
+        // live child rejects honestly since it would run unthrottled. Real
+        // timeout/OOM/CPU-budget/disk outcomes above take precedence.
+        if (quotaAssign !== null) {
+          try {
+            await quotaAssign;
+          } catch {
+            // outcome recorded in quotaAssignError below
+          }
+          if (quotaAssignError !== null && !timedOut && !oomKilled && !cpuExceeded && !diskExceeded) {
+            reject(
+              quotaAssignError instanceof SandboxError
+                ? quotaAssignError
+                : new SandboxError(
+                    `Failed to assign workload to CPU quota job: ${quotaAssignError instanceof Error ? quotaAssignError.message : String(quotaAssignError)}`,
+                    'EXEC_FAILED'
+                  )
+            );
+            return;
+          }
+        }
+
         const metadata = {
           id: execId,
           backend: this.name,
@@ -960,8 +1072,8 @@ export class NativeBackend implements BackendEngine {
     // RFC 0007: run the quota restore (if any) on settlement without masking
     // the execution outcome either way.
     if (quotaRestore === null) return settlement;
-    return settlement.finally(() => {
-      quotaRestore!();
+    return settlement.finally(async () => {
+      await quotaRestore!();
     });
   }
 
@@ -973,6 +1085,86 @@ export class NativeBackend implements BackendEngine {
   private resolveCpuQuotaCores(execQuota?: number): number | null {
     const raw = execQuota ?? this.options.cpuQuota ?? this.options.cpu;
     return typeof raw === 'number' && raw > 0 ? raw : null;
+  }
+
+  /**
+   * RFC 0007 Windows: lazily spawn the per-sandbox helper and create its job
+   * at the sandbox default rate (unlimited 10000 when unset). Idempotent.
+   * Throws EXEC_FAILED when the job cannot be established (never run
+   * uncapped under a true flag).
+   */
+  private async ensureQuotaJob(): Promise<void> {
+    if (this.quotaJobId !== null) return;
+    if (this.quotaHelper === null) {
+      const helper = new QuotaJobHelper();
+      await helper.start();
+      this.quotaHelper = helper;
+    }
+    const jobId = `sb-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+    const created = await this.quotaHelper.request({ cmd: 'create', job: jobId });
+    if (!created.ok) {
+      throw new SandboxError(
+        `Failed to create CPU quota job: ${created.error ?? 'unknown'}`,
+        'EXEC_FAILED'
+      );
+    }
+    this.quotaJobId = jobId;
+    try {
+      await this.setJobRate(this.resolveCpuQuotaCores());
+      this.appliedCpuQuota = this.resolveCpuQuotaCores();
+    } catch (err) {
+      try {
+        await this.quotaHelper.request({ cmd: 'close', job: jobId }, 10000);
+      } catch {
+        // best effort
+      }
+      this.quotaJobId = null;
+      throw err;
+    }
+  }
+
+  /**
+   * RFC 0007 Windows: apply a rate to the sandbox job (null clears to
+   * full-system 10000, which can never bind). Throws EXEC_FAILED when the
+   * helper or job is missing or the call fails.
+   */
+  private async setJobRate(quotaCores: number | null): Promise<void> {
+    const helper = this.quotaHelper;
+    const jobId = this.quotaJobId;
+    if (helper === null || jobId === null) {
+      throw new SandboxError('CPU quota job is not available', 'EXEC_FAILED');
+    }
+    const rate = quotaCores === null ? 10000 : quotaCoresToRate(quotaCores, hostCpuCores());
+    const res = await helper.request({ cmd: 'set', job: jobId, rate });
+    if (!res.ok) {
+      throw new SandboxError(
+        `Failed to apply CPU quota: ${res.error ?? 'unknown'}`,
+        'EXEC_FAILED'
+      );
+    }
+  }
+
+  /**
+   * RFC 0007 Windows: assign a spawned child to the sandbox job so it and
+   * its descendants (auto-join) throttle. Fast commands may exit between
+   * spawn and assignment: those resolve silently (nothing to enforce). A
+   * failed assignment on a live child rejects honestly (it would run
+   * unthrottled under a true flag).
+   */
+  private async assignExecToJob(child: ChildProcess): Promise<void> {
+    const helper = this.quotaHelper;
+    const jobId = this.quotaJobId;
+    if (helper === null || jobId === null || child.pid === undefined) return;
+    const pid = child.pid;
+    const res = await helper.request({ cmd: 'assign', job: jobId, targetPid: pid });
+    if (!res.ok) {
+      if (child.exitCode === null && child.signalCode === null) {
+        throw new SandboxError(
+          `Failed to assign workload to CPU quota job: ${res.error ?? 'unknown'}`,
+          'EXEC_FAILED'
+        );
+      }
+    }
   }
 
   /**
@@ -1267,6 +1459,26 @@ export class NativeBackend implements BackendEngine {
     if (this.cpuCgroupPath !== null) {
       removeSandboxCgroup(this.cpuCgroupPath);
       this.cpuCgroupPath = null;
+    }
+
+    // RFC 0007 Windows: close the sandbox job and stop its helper, best
+    // effort and never throwing (the trees above are already dead).
+    if (this.quotaJobId !== null) {
+      const helper = this.quotaHelper;
+      const jobId = this.quotaJobId;
+      this.quotaJobId = null;
+      if (helper !== null) {
+        try {
+          await helper.request({ cmd: 'close', job: jobId }, 10000);
+        } catch {
+          // helper already gone
+        }
+      }
+    }
+    if (this.quotaHelper !== null) {
+      const helper = this.quotaHelper;
+      this.quotaHelper = null;
+      await helper.stop();
     }
 
     try {
