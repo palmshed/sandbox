@@ -8,3 +8,4 @@ Architectural RFCs document why key design choices and trade-offs were made.
 - `0004-network-isolation.md`: Native backend network isolation (`network: 'disabled'`).
 - `0005-crash-recovery.md`: Crash recovery failure model, guarantees, and reaper design (issue `#10`).
 - `0006-os-filesystem-isolation.md`: OS-level filesystem confinement of the executed process tree (issue `#3`).
+- `0007-cpu-hard-quota.md`: CPU hard quota rate-cap design (contract, capability, platform mapping, failure behavior, test plan; design only, no implementation yet).
