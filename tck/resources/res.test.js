@@ -7,8 +7,12 @@ import { SandboxResourceError } from '../../sdk/typescript/dist/index.js';
  * Spec-Version: 1.0.0
  */
 test('TCK: Resources Module [Spec-Version: 1.0.0]', async (t) => {
+  // No cpu/cpuQuota here on purpose: this module covers disk enforcement
+  // plus capability flags, and a CPU cap would entangle it with quota
+  // machinery (job, prefix, throttling). CPU behavior lives in the quota
+  // suites (compliance/backends/cpuquota.test.js, sdk cpuquota.test.ts).
   const engine = new NativeBackend();
-  await engine.init({ cpu: 1, memory: '512MB', diskQuota: '1KB', timeout: 20000 });
+  await engine.init({ memory: '512MB', diskQuota: '1KB', timeout: 20000 });
 
   t.after(async () => {
     await engine.destroy();
