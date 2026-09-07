@@ -67,7 +67,7 @@ const caps = sandbox.capabilities;
 | Windows  | Best-effort (PowerShell CIM process-tree polling) | Best-effort (PowerShell CIM process-tree polling) |
 | Other    | Unsupported (falls back to timeout) | Unsupported (falls back to timeout) |
 
-On Windows a child that detaches from the process tree can escape accounting; Linux/macOS cover pipelines, background jobs, and chained `sh -c` children. The hard core quota (`cpuQuota`) is designed in RFC 0007 (throttle, never kill) and reported via the `cpuQuotaLimits` capability, `false` on every backend until per-backend implementation promotes it. Windows sampling uses `Get-CimInstance Win32_Process` (the replacement for the removed WMIC utility) and is verified in CI on `windows-latest`.
+On Windows a child that detaches from the process tree can escape accounting; Linux/macOS cover pipelines, background jobs, and chained `sh -c` children. The hard core quota (`cpuQuota`) is designed in RFC 0007 (throttle, never kill) and reported via the `cpuQuotaLimits` capability: `true` on Linux where cgroup delegation probes pass (validated green on real Linux), `false` elsewhere until the Windows/Docker implementations promote it. Windows sampling uses `Get-CimInstance Win32_Process` (the replacement for the removed WMIC utility) and is verified in CI on `windows-latest`.
 
 ### OS-level filesystem isolation (RFC 0006)
 
@@ -412,7 +412,7 @@ disconnection (RFC 0005). Two mechanisms work together:
 ## Known Limitations (`v1.0.0`)
 
 * `cancel()` sends `SIGTERM` to the process group (then `SIGKILL` after 1s).
-* CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is designed in RFC 0007 and reported via `cpuQuotaLimits` (false until implemented per backend).
+* CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is designed in RFC 0007 and reported via `cpuQuotaLimits` (Linux true where delegation probes pass; Windows/Docker/macOS false pending their implementations).
 * CPU and memory enforcement on Windows is best-effort (PowerShell `Get-CimInstance` process-tree polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
 * OS-level filesystem isolation (chroot, mount restrictions) is not yet active; the native backend provides soft process isolation with a hardened virtual filesystem boundary.
 * Docker backend claims `filesystem`, `streaming`, `cpuLimits`, `memoryLimits`, and `networkIsolation` since backend-parity work item `#4`: CPU time budgets are enforced per execution via RLIMIT_CPU (ERR_CPU_EXCEEDED; one-second per-process granularity), per-execution memory overrides via container-wide `docker update` (ERR_OOM_EXCEEDED; updates serialize, OOM flag can go stale), and `disabled`/`allow`/`proxy` network policies are all mapped. Verify `sandbox.capabilities` before relying on Docker resource/network guarantees.
