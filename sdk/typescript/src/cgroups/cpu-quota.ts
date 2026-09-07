@@ -1,3 +1,4 @@
+import { spawn } from 'child_process';
 import * as fssync from 'fs';
 import * as path from 'path';
 
@@ -31,12 +32,17 @@ export function unlimitedCpuMax(): string {
 }
 
 /**
- * Candidate delegated parents, in probe order: the operator escape hatch,
- * then the systemd user delegation path, then the cgroup root itself
- * (writable on permissive hosts and inside containers).
+ * Candidate delegated parents, in probe order: the SDK host's own cgroup
+ * first (a live move downward from the workloads' origin cgroup is what the
+ * kernel permits; cross-branch moves into a shared provisioned parent are
+ * denied), then the operator escape hatch, then the systemd user delegation
+ * path, then the cgroup root itself (writable on permissive hosts and inside
+ * containers). Deduplicated, non-probeable entries skipped.
  */
 export function candidateParents(): string[] {
   const candidates: string[] = [];
+  const own = ownCgroupDir();
+  if (own !== null) candidates.push(own);
   if (process.env.PALMSHED_CGROUP_PARENT) {
     candidates.push(process.env.PALMSHED_CGROUP_PARENT);
   }
@@ -44,33 +50,64 @@ export function candidateParents(): string[] {
     candidates.push(`/sys/fs/cgroup/user.slice/user-${process.getuid()}.slice`);
   }
   candidates.push('/sys/fs/cgroup');
-  return candidates;
+  return [...new Set(candidates)];
 }
 
 /**
- * Probe for a delegated parent: mkdir a test directory, write cpu.max, and
- * prove cgroup.procs writability by writing a nonexistent PID (ESRCH means
- * writable; anything else means no delegation). Cleans up after itself and
- * never throws: null means unavailable.
+ * The SDK host's own cgroup v2 directory, or null when unreadable (non-Linux
+ * hosts, cgroup v1 hierarchies which list one line per controller instead of
+ * the unified `0::` entry, or locked-down containers).
+ */
+export function ownCgroupDir(): string | null {
+  try {
+    const content = fssync.readFileSync('/proc/self/cgroup', 'utf-8');
+    const unified = content
+      .split('\n')
+      .map((l) => l.trim())
+      .find((l) => l.startsWith('0::'));
+    if (!unified) return null;
+    const rel = unified.slice(3) || '/';
+    return `/sys/fs/cgroup${rel}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Probe for a delegated parent by demonstrating a REAL live-PID move (not a
+ * bogus-PID writability check: a nonexistent PID fails with ESRCH before the
+ * kernel's migration permission checks, so it proves writability but never
+ * provability of an actual move). Per candidate: create a test directory,
+ * spawn a throwaway sleeper, move its live PID into the test cgroup, then
+ * kill the sleeper and remove the directory. First candidate with a
+ * successful live move wins. Cleans up after itself and never throws: null
+ * means unavailable.
  */
 export function probeCpuQuotaDelegation(): CgroupDelegation | null {
   for (const parent of candidateParents()) {
     const testDir = path.join(parent, `palmshed-probe-${process.pid}`);
+    let child: ReturnType<typeof spawn> | null = null;
     try {
       fssync.mkdirSync(testDir);
       try {
         fssync.writeFileSync(path.join(testDir, 'cpu.max'), unlimitedCpuMax());
-        try {
-          fssync.writeFileSync(path.join(testDir, 'cgroup.procs'), '999999999');
-        } catch (err) {
-          // ESRCH (no such process) proves the file is writable; any other
-          // error means this parent is not delegated to us.
-          if ((err as NodeJS.ErrnoException)?.code !== 'ESRCH') {
-            throw err;
-          }
-        }
+        child = spawn('sleep', ['10'], { stdio: 'ignore' });
+        child.on('error', () => {
+          // spawn failure surfaces below as a missing PID
+        });
+        if (child.pid === undefined) continue;
+        // The genuine proof: moving a live process of our own uid. Throws
+        // (EACCES and friends) when this parent cannot receive moves.
+        fssync.writeFileSync(path.join(testDir, 'cgroup.procs'), String(child.pid));
         return { parentDir: parent };
       } finally {
+        if (child !== null) {
+          try {
+            child.kill('SIGKILL');
+          } catch {
+            // already exited; reaped by the runtime SIGCHLD handling
+          }
+        }
         try {
           fssync.rmdirSync(testDir);
         } catch {
