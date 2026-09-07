@@ -50,10 +50,24 @@ function dockerLinuxAvailable() {
   }
 }
 
-// CPU-bound burn of roughly burnMs milliseconds of CPU time. Pure arithmetic
-// (no I/O, no sleep) so wall time tracks CPU time 1:1 unthrottled.
-const CPU_BURN = (burnMs) =>
-  `node -e "const end = Date.now() + (${burnMs}); let x = 0; while (Date.now() < end) { x += Math.sqrt(x + 1); } console.log('burned ${burnMs}');"`;
+// Iteration-bounded burn: fixed work, so throttling stretches WALL time
+// (a Date.now-bounded loop would exit on schedule regardless). Roughly 1 to
+// 3 seconds unthrottled depending on host speed; assertions compare
+// throttled against control back-to-back (ratio), never absolute walls, so
+// shared-runner noise cancels instead of flaking.
+const ITER_BURN = `node -e "
+  let x = 0;
+  for (let i = 0; i < 200000000; i++) { x += Math.sqrt(x + 1); }
+  console.log('burned ' + Math.round(x));
+"`;
+
+async function burnWall(sandbox, command, options) {
+  const start = Date.now();
+  const execution = await sandbox.exec(command, options);
+  await execution.wait();
+  assert.equal(execution.status(), 'completed');
+  return Date.now() - start;
+}
 
 test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
   await t.test('macOS reports false and runs unthrottled', async (t) => {
@@ -65,12 +79,8 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
       await sandbox.destroy();
     });
     assert.equal(sandbox.capabilities.cpuQuotaLimits, false);
-    const start = Date.now();
-    const execution = await sandbox.exec(CPU_BURN(1000));
-    await execution.wait();
-    assert.equal(execution.status(), 'completed');
-    assert.match(execution.stdout(), /burned 1000/);
-    assert.ok(Date.now() - start < 30000, 'unthrottled burn finishes promptly');
+    const wall = await burnWall(sandbox, ITER_BURN);
+    assert.ok(wall < 60000, 'unthrottled burn finishes promptly');
   });
 
   await t.test('native Linux cgroup enforcement', async (t) => {
@@ -106,23 +116,30 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
       );
     });
 
-    await t.test('throttled burn takes longer wall time than CPU time', async () => {
-      const start = Date.now();
-      const execution = await sandbox.exec(CPU_BURN(2000));
-      await execution.wait();
-      assert.equal(execution.status(), 'completed');
-      // 2000ms of CPU at 0.5 cores needs at least 4000ms wall; 3000ms
-      // allows wide CI slack while staying far above unthrottled speed.
-      assert.ok(Date.now() - start >= 3000, 'quota throttles the burn');
+    await t.test('throttled burn takes longer wall time than unthrottled', async () => {
+      const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 90000 });
+      try {
+        const controlWall = await burnWall(control, ITER_BURN);
+        const throttledWall = await burnWall(sandbox, ITER_BURN);
+        // Same work back-to-back on the same host: at quota 0.5 the
+        // throttled run needs roughly twice the wall time. The 1.5 floor
+        // absorbs shared-runner noise (measured 1.79 on a contended VM).
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `quota throttles the burn (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+      } finally {
+        await control.destroy();
+      }
     });
 
     await t.test('unthrottled control completes', async () => {
       const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 60000 });
       try {
-        const execution = await control.exec(CPU_BURN(2000));
+        const execution = await control.exec(ITER_BURN);
         await execution.wait();
         assert.equal(execution.status(), 'completed');
-        assert.match(execution.stdout(), /burned 2000/);
+        assert.match(execution.stdout(), /burned/);
       } finally {
         await control.destroy();
       }
@@ -133,26 +150,33 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
       t.after(async () => {
         await plain.destroy();
       });
-      const start = Date.now();
-      const throttled = await plain.exec(CPU_BURN(2000), { cpuQuota: 0.5 });
-      await throttled.wait();
-      assert.equal(throttled.status(), 'completed');
-      assert.ok(Date.now() - start >= 3000, 'override throttles this execution');
-      const control = await plain.exec(CPU_BURN(1000));
+      const controlWall = await burnWall(plain, ITER_BURN);
+      const throttledWall = await burnWall(plain, ITER_BURN, { cpuQuota: 0.5 });
+      assert.ok(
+        throttledWall >= 1.5 * controlWall,
+        `override throttles this execution (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+      );
+      const control = await plain.exec(ITER_BURN);
       await control.wait();
       assert.equal(control.status(), 'completed');
-      assert.match(control.stdout(), /burned 1000/);
+      assert.match(control.stdout(), /burned/);
     });
 
     await t.test('descendant processes inherit the cap', async (t) => {
       if (process.platform === 'win32') {
         return t.skip('POSIX shell syntax only; Windows tree covered in its group');
       }
-      const start = Date.now();
-      const execution = await sandbox.exec(`${CPU_BURN(2000)} & wait $!`);
-      await execution.wait();
-      assert.equal(execution.status(), 'completed');
-      assert.ok(Date.now() - start >= 3000, 'background child stays throttled');
+      const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 90000 });
+      try {
+        const controlWall = await burnWall(control, ITER_BURN);
+        const throttledWall = await burnWall(sandbox, `${ITER_BURN} & wait $!`);
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `background child stays throttled (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+      } finally {
+        await control.destroy();
+      }
     });
 
     await t.test('quota plus budget still dies by budget', async () => {
@@ -171,7 +195,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
 
     await t.test('non-positive quotas mean unset', async () => {
       for (const quota of [0, -1, NaN]) {
-        const execution = await sandbox.exec(CPU_BURN(500), { cpuQuota: quota });
+        const execution = await sandbox.exec(ITER_BURN, { cpuQuota: quota });
         await execution.wait();
         assert.equal(execution.status(), 'completed', `quota ${String(quota)} runs unenforced`);
       }
@@ -220,22 +244,42 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
       return t.skip('cpuQuotaLimits not enforced here yet; skipping until promotion');
     }
 
-    await t.test('throttled burn takes longer wall time than CPU time', async () => {
-      const start = Date.now();
-      const execution = await sandbox.exec(CPU_BURN(2000));
-      await execution.wait();
-      assert.equal(execution.status(), 'completed');
-      assert.ok(Date.now() - start >= 3000, 'quota throttles the burn');
+    await t.test('throttled burn takes longer wall time than unthrottled', async () => {
+      const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 90000 });
+      try {
+        const controlWall = await burnWall(control, ITER_BURN);
+        const start = Date.now();
+        const execution = await sandbox.exec(ITER_BURN);
+        await execution.wait();
+        assert.equal(execution.status(), 'completed');
+        const throttledWall = Date.now() - start;
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `quota throttles the burn (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+      } finally {
+        await control.destroy();
+      }
     });
 
     await t.test('child tree stays in the job', async () => {
-      const start = Date.now();
-      const execution = await sandbox.exec(
-        `node -e "const {spawnSync}=require('child_process');spawnSync(process.execPath,['-e','const e=Date.now()+2000;let x=0;while(Date.now()<e){x+=Math.sqrt(x+1);}'],{stdio:'inherit'});console.log('tree burned');"`
-      );
-      await execution.wait();
-      assert.equal(execution.status(), 'completed');
-      assert.ok(Date.now() - start >= 3000, 'spawned child stays throttled');
+      const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 90000 });
+      try {
+        const controlWall = await burnWall(control, ITER_BURN);
+        const start = Date.now();
+        const execution = await sandbox.exec(
+          `node -e "const {spawnSync}=require('child_process');spawnSync(process.execPath,['-e','let x=0;for(let i=0;i<200000000;i++){x+=Math.sqrt(x+1);}'],{stdio:'inherit'});console.log('tree burned');"`
+        );
+        await execution.wait();
+        assert.equal(execution.status(), 'completed');
+        const throttledWall = Date.now() - start;
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `spawned child stays throttled (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+      } finally {
+        await control.destroy();
+      }
     });
   });
 
@@ -251,23 +295,38 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
       return t.skip('cpuQuotaLimits not enforced here yet; skipping until promotion');
     }
 
-    await t.test('throttled burn takes longer wall time than CPU time', async () => {
-      const start = Date.now();
-      const execution = await sandbox.exec(CPU_BURN(2000));
-      await execution.wait();
-      assert.equal(execution.status(), 'completed');
-      assert.ok(Date.now() - start >= 3000, 'quota throttles the burn');
+    await t.test('throttled burn takes longer wall time than unthrottled', async () => {
+      const plain = await Sandbox.create({ backend: 'docker', osFilesystemIsolation: false, timeout: 90000 });
+      try {
+        const controlWall = await burnWall(plain, ITER_BURN);
+        const start = Date.now();
+        const execution = await sandbox.exec(ITER_BURN);
+        await execution.wait();
+        assert.equal(execution.status(), 'completed');
+        const throttledWall = Date.now() - start;
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `quota throttles the burn (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+      } finally {
+        await plain.destroy();
+      }
     });
 
     await t.test('per-exec override throttles then restores', async () => {
       const plain = await Sandbox.create({ backend: 'docker', osFilesystemIsolation: false, timeout: 90000 });
       try {
+        const controlWall = await burnWall(plain, ITER_BURN);
         const start = Date.now();
-        const throttled = await plain.exec(CPU_BURN(2000), { cpuQuota: 0.5 });
+        const throttled = await plain.exec(ITER_BURN, { cpuQuota: 0.5 });
         await throttled.wait();
         assert.equal(throttled.status(), 'completed');
-        assert.ok(Date.now() - start >= 3000, 'override throttles this execution');
-        const control = await plain.exec(CPU_BURN(1000));
+        const throttledWall = Date.now() - start;
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `override throttles this execution (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+        const control = await plain.exec(ITER_BURN);
         await control.wait();
         assert.equal(control.status(), 'completed');
       } finally {
