@@ -1,6 +1,6 @@
 # Sandbox Specification Versioning
 
-Current Specification Version: **1.1.0**
+Current Specification Version: **1.2.0**
 
 ## Versioning Rules
 
@@ -12,16 +12,15 @@ The Palmshed Sandbox specification follows Semantic Versioning (MAJOR.MINOR.PATC
 
 ## Specification Changelog
 
-### Unreleased (target 1.2.0: CPU hard quota)
+### v1.2.0 (optional CPU hard quota capability)
 
 `cpuQuotaLimits` is an **optional capability extension** for hard CPU rate
-caps (RFC 0007, design accepted, not yet enforced by any backend). Its
-presence does not change the 1.1.0 contract: the flag is reported (never
-assumed) as a boolean, and backends that cannot throttle report `false`
-while accepting the option without effect. `cpu` and `cpuQuota` share
-rate-cap semantics with `cpuQuota ?? cpu` precedence. Version number moves
-to 1.2.0 atomically with the implementation release, per the minor-bump
-rule for backward-compatible feature additions.
+caps (RFC 0007). Its presence does not change the 1.1.0 contract: the flag is
+reported (never assumed) as a boolean, and backends that cannot throttle
+report `false` while accepting the option without effect. `cpu` and `cpuQuota`
+share rate-cap semantics with `cpuQuota ?? cpu` precedence. Enforced by
+native Linux (cgroups v2), native Windows (Job Objects), and Docker
+(`--cpus`) where each platform's probe passes; macOS reports `false`.
 
 ### v1.1.0 (optional OS filesystem isolation capability)
 
