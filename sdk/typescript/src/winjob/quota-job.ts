@@ -177,14 +177,19 @@ export const QUOTA_JOB_HANDLE_ENV = 'PALMSHED_CPU_JOB_HANDLE';
 export const QUOTA_JOB_SDKPID_ENV = 'PALMSHED_CPU_JOB_SDKPID';
 
 /**
- * The per-execution self-assign prefix (Windows only): a self-contained
- * powershell invocation that duplicates the sandbox job handle into itself
- * and joins the job BEFORE forking anything, closing the birth race where
- * children forked before a host-side assignment would inherit no job
- * forever. Runs as `powershell ... && <command>`, so any failure fails the
- * execution loudly instead of running uncapped. Costs a PowerShell startup
- * plus a small C# compile per quota execution; unenforced executions never
- * pay it. Distinct exit codes (11/12/13) identify the failing step.
+ * The per-execution self-assign prefix (Windows only): joins the INVOKING
+ * shell (cmd) to the job before it forks anything, so descendants inherit
+ * the job at birth deterministically. A host-side assign afterwards could
+ * never cover children forked first (membership is fixed at fork, and cmd
+ * always forks before any host round trip lands), which measured as
+ * unthrottled-plus-overhead, so the prefix is the mechanism, not a helper.
+ * It discovers its parent via CIM (the same Win32_Process query the
+ * samplers already rely on), duplicates the job into itself from the SDK,
+ * and assigns the parent. Runs as `powershell ... && <command>`, so any
+ * failure fails the execution loudly instead of running uncapped. Costs a
+ * PowerShell startup plus a small C# compile plus one CIM round trip per
+ * quota execution; unenforced executions never pay it. Distinct exit codes
+ * (11-15) identify the failing step.
  *
  * Quoting: the script travels as Base64 (EncodedCommand, mirroring the
  * helper) so embedded quotes and newlines never interact with cmd parsing.
@@ -216,9 +221,13 @@ function buildSelfAssignScript(): string {
     `$dupOk = [QSelf]::DuplicateHandle($sdk, [IntPtr][int]$env:${QUOTA_JOB_HANDLE_ENV}, [QSelf]::GetCurrentProcess(), [ref]$mine, 0, $false, 2)`,
     '} finally { $null = [QSelf]::CloseHandle($sdk) }',
     'if (-not $dupOk) { exit 12 }',
+    '$parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId',
+    'if (-not $parentPid) { exit 14 }',
+    '$ph = [QSelf]::OpenProcess(257, $false, [uint32]$parentPid)',
+    'if ($ph -eq [IntPtr]::Zero) { exit 15 }',
     'try {',
-    '  if (-not [QSelf]::AssignProcessToJobObject($mine, [QSelf]::GetCurrentProcess())) { exit 13 }',
-    '} finally { $null = [QSelf]::CloseHandle($mine) }',
+    '  if (-not [QSelf]::AssignProcessToJobObject($mine, $ph)) { exit 13 }',
+    '} finally { $null = [QSelf]::CloseHandle($ph); $null = [QSelf]::CloseHandle($mine) }',
   ].join('\n');
 }
 
