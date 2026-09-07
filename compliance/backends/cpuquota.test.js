@@ -16,6 +16,11 @@ import { Sandbox } from '../../sdk/typescript/dist/index.js';
  * Only the macOS honesty test runs today (macOS stays false permanently per
  * the RFC): it asserts the flag and unthrottled completion.
  *
+ * Quota sandboxes opt out of osfs confinement (`osFilesystemIsolation:
+ * false`): the Landlock ruleset denies the shell self-move write, which
+ * would leave only the racy host-side move. Opting out isolates the quota
+ * mechanism under test.
+ *
  * On systemd hosts the suite needs a delegated subtree to run in: an
  * ordinary login shell lives in a root-owned session scope it cannot extend,
  * so run inside `systemd-run --user --scope` (or equivalent) to provide a
@@ -55,7 +60,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     if (process.platform !== 'darwin') {
       return t.skip('macOS honesty check only');
     }
-    const sandbox = await Sandbox.create({ backend: 'native', cpuQuota: 0.5, timeout: 60000 });
+    const sandbox = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, cpuQuota: 0.5, timeout: 60000 });
     t.after(async () => {
       await sandbox.destroy();
     });
@@ -72,7 +77,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     if (process.platform !== 'linux') {
       return t.skip('Linux cgroup mapping only');
     }
-    const sandbox = await Sandbox.create({ backend: 'native', cpuQuota: 0.5, timeout: 90000 });
+    const sandbox = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, cpuQuota: 0.5, timeout: 90000 });
     t.after(async () => {
       await sandbox.destroy();
     });
@@ -112,7 +117,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     });
 
     await t.test('unthrottled control completes', async () => {
-      const control = await Sandbox.create({ backend: 'native', timeout: 60000 });
+      const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 60000 });
       try {
         const execution = await control.exec(CPU_BURN(2000));
         await execution.wait();
@@ -124,7 +129,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     });
 
     await t.test('per-exec override throttles then restores', async () => {
-      const plain = await Sandbox.create({ backend: 'native', timeout: 90000 });
+      const plain = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 90000 });
       t.after(async () => {
         await plain.destroy();
       });
@@ -207,7 +212,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     if (process.platform !== 'win32') {
       return t.skip('Windows Job Object mapping only');
     }
-    const sandbox = await Sandbox.create({ backend: 'native', cpuQuota: 0.5, timeout: 90000 });
+    const sandbox = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, cpuQuota: 0.5, timeout: 90000 });
     t.after(async () => {
       await sandbox.destroy();
     });
@@ -238,7 +243,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     if (!dockerLinuxAvailable()) {
       return t.skip('no Linux Docker daemon on this host');
     }
-    const sandbox = await Sandbox.create({ backend: 'docker', cpuQuota: 0.5, timeout: 90000 });
+    const sandbox = await Sandbox.create({ backend: 'docker', osFilesystemIsolation: false, cpuQuota: 0.5, timeout: 90000 });
     t.after(async () => {
       await sandbox.destroy();
     });
@@ -255,7 +260,7 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     });
 
     await t.test('per-exec override throttles then restores', async () => {
-      const plain = await Sandbox.create({ backend: 'docker', timeout: 90000 });
+      const plain = await Sandbox.create({ backend: 'docker', osFilesystemIsolation: false, timeout: 90000 });
       try {
         const start = Date.now();
         const throttled = await plain.exec(CPU_BURN(2000), { cpuQuota: 0.5 });

@@ -232,6 +232,22 @@ export class NativeBackend implements BackendEngine {
 
     const env = NativeBackend.buildExecutionEnv(this.options.env, options.env);
 
+    // RFC 0007: the spawned shell moves itself into the sandbox cgroup first
+    // (PALMSHED_CPU_CGROUP carries the path), before forking anything. This
+    // closes the birth race inherent to host-side moves: children forked
+    // before the host writes the parent PID would otherwise inherit the
+    // unconstrained cgroup forever. Forced after user env so workloads
+    // cannot unset it; failures fall through silently to the host-side move
+    // below (which still catches slow-forking trees). Under osfs
+    // confinement the write is denied by the Landlock ruleset and only the
+    // host-side move applies (documented residual for fast-forking confined
+    // workloads). Linux cgroup path only; everywhere else this is a no-op.
+    let effectiveCommand = command;
+    if (this.cpuCgroupPath !== null && !isWin && process.platform === 'linux') {
+      env.PALMSHED_CPU_CGROUP = this.cpuCgroupPath;
+      effectiveCommand = 'echo $$ > "$PALMSHED_CPU_CGROUP/cgroup.procs" 2>/dev/null; ' + command;
+    }
+
     // If network is disabled, set standard proxy/offline indicators
     if (this.options.network === 'disabled') {
       env.HTTP_PROXY = 'http://127.0.0.1:0';
@@ -558,13 +574,13 @@ export class NativeBackend implements BackendEngine {
           '--',
           '/bin/sh',
           '-c',
-          command,
+          effectiveCommand,
         ];
       } else if (this.options.network === 'disabled') {
         if (process.platform === 'linux') {
           if (this.networkIsolationAvailable) {
             spawnShell = '/bin/sh';
-            spawnArgs = ['-c', `unshare -n --user --map-root-user -- /bin/sh -c ${JSON.stringify(command)}`];
+            spawnArgs = ['-c', `unshare -n --user --map-root-user -- /bin/sh -c ${JSON.stringify(effectiveCommand)}`];
           } else {
             spawnShell = shell;
             spawnArgs = [shellFlag, command];
@@ -575,11 +591,11 @@ export class NativeBackend implements BackendEngine {
           spawnArgs = ['-p', sbProfile, shell, shellFlag, command];
         } else {
           spawnShell = shell;
-          spawnArgs = [shellFlag, command];
+          spawnArgs = [shellFlag, effectiveCommand];
         }
       } else {
         spawnShell = shell;
-        spawnArgs = [shellFlag, command];
+        spawnArgs = [shellFlag, effectiveCommand];
       }
 
       const child = spawn(spawnShell, spawnArgs, {
@@ -599,10 +615,17 @@ export class NativeBackend implements BackendEngine {
       if (child.pid !== undefined) {
         recordSandboxPgid(this.sandboxDir, child.pid);
       }
-      // RFC 0007: move the workload tree into the sandbox cgroup (Linux only,
-      // when delegation is available). Membership is inherited across fork, so
-      // moving the spawned root confines the whole tree, including the
-      // unshare/Landlock chain which preserves the PID. Migration races the
+      // RFC 0007: host-side move of the workload root into the sandbox cgroup
+      // (Linux only, when delegation is available). This is the BACKUP path:
+      // the spawned shell already moved itself via PALMSHED_CPU_CGROUP before
+      // forking anything, which closes the birth race where children forked
+      // before this write would inherit the unconstrained cgroup forever
+      // (membership is fixed at fork time; moving the parent later cannot
+      // retroactively move them). This backup still catches slow-forking
+      // trees when the self-move was denied (osfs confinement) or skipped.
+      // Membership is inherited across fork, so moving the root confines
+      // later descendants, including the unshare/Landlock chain which
+      // preserves the PID. Migration races the
       // child startup, so transient failures are retried briefly.
       if (this.cpuCgroupPath !== null && child.pid !== undefined) {
         const cgroupPath = this.cpuCgroupPath;
