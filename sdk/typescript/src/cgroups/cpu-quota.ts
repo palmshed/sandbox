@@ -34,10 +34,11 @@ export function unlimitedCpuMax(): string {
 /**
  * Enable the cpu controller for children of dir by adding +cpu to its
  * cgroup.subtree_control (no-op when already present). Required before any
- * child cpu.max write: availability flows downward, so a fresh child of a
- * scope without +cpu rejects cpu.max writes even when every file is
- * user-owned. Enabling availability throttles nothing by itself. Throws on
- * failure (caller decides honesty).
+ * child cpu.max write: availability flows downward. Enabling availability
+ * throttles nothing by itself. dir MUST hold no member processes (use the
+ * distributor pattern below): a cgroup with both members and enabled
+ * controllers violates the no-internal-process constraint, after which
+ * moves into its children are refused. Throws on failure.
  */
 export function enableCpuController(dir: string): void {
   const controlFile = path.join(dir, 'cgroup.subtree_control');
@@ -93,21 +94,23 @@ export function ownCgroupDir(): string | null {
  * Probe for a delegated parent by demonstrating a REAL live-PID move (not a
  * bogus-PID writability check: a nonexistent PID fails with ESRCH before the
  * kernel's migration permission checks, so it proves writability but never
- * provability of an actual move). Per candidate: create a test directory,
- * spawn a throwaway sleeper, move its live PID into the test cgroup, then
- * kill the sleeper and remove the directory. First candidate with a
+ * provability of an actual move). Topology per candidate: a process-free
+ * distributor child (holds the +cpu enablement, never any processes, so the
+ * no-internal-process constraint stays satisfied) plus a test child under
+ * it; spawn a throwaway sleeper, move its live PID into the test child,
+ * then kill the sleeper and remove both directories. First candidate with a
  * successful live move wins. Cleans up after itself and never throws: null
  * means unavailable.
  */
 export function probeCpuQuotaDelegation(): CgroupDelegation | null {
   for (const parent of candidateParents()) {
-    const testDir = path.join(parent, `palmshed-probe-${process.pid}`);
+    const distDir = path.join(parent, 'palmshed-probe-dist');
+    const testDir = path.join(distDir, `palmshed-probe-${process.pid}`);
     let child: ReturnType<typeof spawn> | null = null;
     try {
+      fssync.mkdirSync(distDir, { recursive: true });
+      enableCpuController(distDir);
       fssync.mkdirSync(testDir);
-      // Availability flows downward: without +cpu in the parent, the child
-      // cpu.max write fails even when every file is user-owned.
-      enableCpuController(parent);
       try {
         fssync.writeFileSync(path.join(testDir, 'cpu.max'), unlimitedCpuMax());
         child = spawn('sleep', ['10'], { stdio: 'ignore' });
@@ -138,6 +141,19 @@ export function probeCpuQuotaDelegation(): CgroupDelegation | null {
     }
   }
   return null;
+}
+
+/**
+ * Ensure the process-free distributor directory under a delegated parent
+ * (created idempotently, shared across sandboxes of this host process tree;
+ * never receives member processes) with cpu enabled downward. Returns its
+ * path. Throws on failure.
+ */
+export function ensureDistributor(parentDir: string): string {
+  const distDir = path.join(parentDir, 'palmshed-dist');
+  fssync.mkdirSync(distDir, { recursive: true });
+  enableCpuController(distDir);
+  return distDir;
 }
 
 /** Create a per-sandbox cgroup; throws on failure (caller decides honesty). */

@@ -22,7 +22,7 @@ import { deriveRuntimeAllowlist } from '../osfs/allowlist.js';
 import {
   probeCpuQuotaDelegation,
   createSandboxCgroup,
-  enableCpuController,
+  ensureDistributor,
   setCpuMax,
   movePidToCgroup,
   removeSandboxCgroup,
@@ -193,11 +193,12 @@ export class NativeBackend implements BackendEngine {
       if (delegation !== null) {
         try {
           const name = `palmshed-sb-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-          this.cpuCgroupPath = createSandboxCgroup(delegation.parentDir, name);
-          // Availability flows downward: enable cpu for our children before
-          // any cpu.max write (fresh children of a scope without +cpu reject
-          // the write even when user-owned). Throttles nothing by itself.
-          enableCpuController(delegation.parentDir);
+          // Sandbox groups live under a process-free distributor (never any
+          // members there): the distributor carries the +cpu enablement
+          // downward, satisfying the no-internal-process constraint that
+          // enabling controllers in a member-holding cgroup would violate.
+          const distDir = ensureDistributor(delegation.parentDir);
+          this.cpuCgroupPath = createSandboxCgroup(distDir, name);
           const quota = this.resolveCpuQuotaCores();
           if (quota !== null) {
             setCpuMax(this.cpuCgroupPath, quota);
