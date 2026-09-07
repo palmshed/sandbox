@@ -599,15 +599,40 @@ export class NativeBackend implements BackendEngine {
       // RFC 0007: move the workload tree into the sandbox cgroup (Linux only,
       // when delegation is available). Membership is inherited across fork, so
       // moving the spawned root confines the whole tree, including the
-      // unshare/Landlock chain which preserves the PID.
+      // unshare/Landlock chain which preserves the PID. Migration races the
+      // child startup, so transient failures are retried briefly.
       if (this.cpuCgroupPath !== null && child.pid !== undefined) {
-        try {
-          movePidToCgroup(this.cpuCgroupPath, child.pid);
-        } catch {
-          // A fast command may have exited between spawn and move; only fail
+        const cgroupPath = this.cpuCgroupPath;
+        const pid = child.pid;
+        let moved = false;
+        let lastError: unknown = null;
+        for (let attempt = 0; attempt < 5 && !moved; attempt++) {
+          if (attempt > 0) {
+            // Synchronous short sleep (Atomics.wait); no dependency, no timer.
+            Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+          }
+          try {
+            movePidToCgroup(cgroupPath, pid);
+            moved = true;
+          } catch (err) {
+            lastError = err;
+          }
+        }
+        if (!moved) {
+          // A fast command may have exited during the retries; only fail
           // honestly when the child is still alive (it would run unthrottled).
-          if (isProcessAlive(child.pid)) {
-            throw new SandboxError('Failed to move workload into CPU cgroup', 'EXEC_FAILED');
+          // The underlying errno is included: procs-write failures are
+          // pid-state dependent (ESRCH versus migration errors) and the code
+          // decides the next step.
+          if (isProcessAlive(pid)) {
+            const reason =
+              lastError instanceof Error
+                ? `${lastError.message} (${(lastError as NodeJS.ErrnoException)?.code ?? 'no-code'})`
+                : String(lastError);
+            throw new SandboxError(
+              `Failed to move workload into CPU cgroup ${cgroupPath}: ${reason}`,
+              'EXEC_FAILED'
+            );
           }
         }
       }
