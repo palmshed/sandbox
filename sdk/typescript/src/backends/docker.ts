@@ -30,7 +30,9 @@ export class DockerBackend implements BackendEngine {
   // budget per process, unlike the native process-group accounting) with
   // one-second granularity; concurrent execs with different per-exec memory
   // limits serialize on the container-wide setting; OOM attribution falls
-  // back to exit-code 137 once a container has OOMed before (stale flag).
+  // back to exit-code 137 once a container has OOMed before (stale flag);
+  // clearing a limit materializes unlimited as 1TiB (daemon validation
+  // rejects the 0/-1 spellings on update).
   public readonly capabilities: BackendCapabilities = {
     filesystem: true,
     networkIsolation: true,
@@ -318,17 +320,20 @@ export class DockerBackend implements BackendEngine {
   /**
    * Apply a container-wide memory limit (null clears it). Mirror updated only
    * on success. Applies always pin swap equal to memory (no swap spillover,
-   * so OOM is deterministic). Clearing passes only `--memory 0`: bundling
-   * `--memory-swap -1` in the same update trips daemon-side validation, and
-   * a stale swap cap cannot bind RAM while memory.max is unlimited, so the
-   * swap flag is intentionally left untouched on clear.
+   * so OOM is deterministic). Clearing materializes unlimited as 1TiB for
+   * both flags: `docker update` rejects the 0/-1 unlimited spellings on
+   * common daemons (cross-validation between the two flags), while an
+   * explicit equal pair always validates; 1TiB exceeds any host, so it never
+   * binds a real workload. The mirror still records null (conceptually
+   * unlimited), which stays consistent because every override apply re-pins
+   * both flags explicitly.
    */
   private async applyContainerMemory(targetBytes: number | null): Promise<void> {
     if (targetBytes === this.appliedMemoryBytes) return;
-    const memArgs =
-      targetBytes === null
-        ? ['--memory', '0']
-        : [`--memory=${targetBytes}`, `--memory-swap=${targetBytes}`];
+    // 1TiB in bytes: practical unlimited that always passes update validation.
+    const UNLIMITED_BYTES = 1099511627776;
+    const effective = targetBytes === null ? UNLIMITED_BYTES : targetBytes;
+    const memArgs = [`--memory=${effective}`, `--memory-swap=${effective}`];
     const res = await this.runDockerCmd(['update', ...memArgs, this.containerId]);
     if (res.exitCode !== 0) {
       throw new SandboxError(
