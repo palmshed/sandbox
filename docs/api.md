@@ -30,7 +30,8 @@ import { Sandbox } from '@palmshed/sandbox';
 const sandbox = await Sandbox.create({
   backend:  'native',      // 'native' | 'docker'. Default: 'native'
   timeout:  10000,         // ms: default execution timeout
-  cpu:      1,             // CPU units (backend-dependent; quota not enforced by native)
+  cpu:      1,             // CPU units (hard rate cap where `cpuQuotaLimits` is true; `cpuQuota` takes precedence)
+  cpuQuota:  0.5,          // hard rate cap in cores: throttles, never kills (RFC 0007)
   cpuTimeLimit: 2000,      // ms: CPU time budget enforced across the process group
   memory:   '256MB',       // memory bound (backend-dependent)
   network:  'disabled',    // 'disabled' | 'allow' | 'proxy'
@@ -54,6 +55,7 @@ const caps = sandbox.capabilities;
 //   memoryLimits: true,
 //   streaming: true,
 //   osFilesystemIsolation: 'supported',   // 'supported' | 'unsupported' | 'unknown' (RFC 0006)
+//   cpuQuotaLimits: true,                // hard rate cap enforced (RFC 0007; false where unsupported)
 //   remoteExecution: false
 // }
 ```
@@ -85,6 +87,19 @@ if (sandbox.capabilities.osFilesystemIsolation === 'supported') {
 - **Platforms**: Linux with Landlock ABI >= 2 and unprivileged user namespaces reports `supported`; macOS reports `unknown` (Seatbelt filesystem profile is deferred as a post-v1.0 follow-up, not promised); Windows and others report `unsupported`.
 - **Residuals**: `/proc` and `/sys` are not hidden by Landlock (path-based mechanism). Name lookups that read the NSS files (`os.userInfo()`, hostname resolution) fail with `EACCES` because `/etc/passwd`, `/etc/group`, `/etc/hosts`, `/etc/resolv.conf`, and `/etc/nsswitch.conf` are intentionally NOT in the runtime allowlist (granting them would allow exfiltrating world-readable system files). Runtime allowlist and residuals are documented in `rfcs/0006-os-filesystem-isolation.md`.
 
+### CPU hard quota (RFC 0007)
+
+`cpuQuotaLimits` is a boolean capability reporting whether a hard CPU rate cap is enforced by throttling (never killing). Check it before relying on a quota; where it is `false`, the option is accepted but ignored.
+
+```ts
+if (sandbox.capabilities.cpuQuotaLimits === true) {
+  // Workloads are throttled to the configured cores; descendants inherit it.
+}
+```
+
+- **Timeout interplay**: throttling stretches wall-clock time, so a wall `timeout` tuned for unthrottled execution can fire under quota on legitimate work. Size timeouts with the quota in mind, or bound CPU consumption with `cpuTimeLimit` instead (it counts CPU time, which throttling does not inflate).
+- **Validation**: values at or below zero (and `NaN`) mean unset; values above host capacity pass through on most backends (the Docker daemon validates `--cpus` into its host range instead). `cpuQuota` takes precedence over the legacy `cpu` field, which shares its meaning.
+
 ### `sandbox.backendName`
 
 Returns the active backend name (`'native'` | `'docker'`).
@@ -104,6 +119,7 @@ Options:
 {
   timeout?: number;   // override sandbox-level timeout for this execution
   cpuTimeLimit?: number; // ms: CPU time budget for this execution (overrides sandbox-level)
+  cpuQuota?: number;  // cores: hard rate-cap override for this execution (overrides sandbox-level)
   memory?: string | number; // memory bound override (e.g. '256MB')
   stdout?:  Writable; // pipe stdout directly to a stream
   stderr?:  Writable; // pipe stderr directly to a stream
