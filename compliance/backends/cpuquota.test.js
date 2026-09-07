@@ -16,6 +16,11 @@ import { Sandbox } from '../../sdk/typescript/dist/index.js';
  * Only the macOS honesty test runs today (macOS stays false permanently per
  * the RFC): it asserts the flag and unthrottled completion.
  *
+ * On systemd hosts the suite needs a delegated subtree to run in: an
+ * ordinary login shell lives in a root-owned session scope it cannot extend,
+ * so run inside `systemd-run --user --scope` (or equivalent) to provide a
+ * user-owned ancestor. Without one the native group skips honestly.
+ *
  * Deterministic rate readback (cpu.max contents, job query, inspect format)
  * is backend-coupled and belongs in SDK unit tests at implementation time;
  * this suite asserts portable behavior (wall-clock contrast with wide

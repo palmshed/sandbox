@@ -32,6 +32,22 @@ export function unlimitedCpuMax(): string {
 }
 
 /**
+ * Enable the cpu controller for children of dir by adding +cpu to its
+ * cgroup.subtree_control (no-op when already present). Required before any
+ * child cpu.max write: availability flows downward, so a fresh child of a
+ * scope without +cpu rejects cpu.max writes even when every file is
+ * user-owned. Enabling availability throttles nothing by itself. Throws on
+ * failure (caller decides honesty).
+ */
+export function enableCpuController(dir: string): void {
+  const controlFile = path.join(dir, 'cgroup.subtree_control');
+  const current = fssync.readFileSync(controlFile, 'utf-8');
+  if (!current.split(/\s+/).includes('cpu')) {
+    fssync.writeFileSync(controlFile, '+cpu');
+  }
+}
+
+/**
  * Candidate delegated parents, in probe order: the SDK host's own cgroup
  * first (a live move downward from the workloads' origin cgroup is what the
  * kernel permits; cross-branch moves into a shared provisioned parent are
@@ -89,6 +105,9 @@ export function probeCpuQuotaDelegation(): CgroupDelegation | null {
     let child: ReturnType<typeof spawn> | null = null;
     try {
       fssync.mkdirSync(testDir);
+      // Availability flows downward: without +cpu in the parent, the child
+      // cpu.max write fails even when every file is user-owned.
+      enableCpuController(parent);
       try {
         fssync.writeFileSync(path.join(testDir, 'cpu.max'), unlimitedCpuMax());
         child = spawn('sleep', ['10'], { stdio: 'ignore' });
