@@ -91,6 +91,29 @@ export function ownCgroupDir(): string | null {
 }
 
 /**
+ * Wait for a child to be reaped (bounded, never rejects). A SIGKILLed child
+ * lingers as a zombie inside its cgroup until the runtime processes SIGCHLD,
+ * so removing its cgroup must wait for the exit event: rmdir on a non-empty
+ * cgroup throws, and cleanup throwing past a proven result would discard it.
+ */
+function waitForChildExit(
+  child: ReturnType<typeof spawn>,
+  timeoutMs: number
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, timeoutMs);
+    child.once('exit', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/**
  * Probe for a delegated parent by demonstrating a REAL live-PID move (not a
  * bogus-PID writability check: a nonexistent PID fails with ESRCH before the
  * kernel's migration permission checks, so it proves writability but never
@@ -104,12 +127,15 @@ export function ownCgroupDir(): string | null {
  * unavailable. Side effects on success are the intended setup (host stays
  * relocated and unthrottled; empty dirs vanish with the scope); on failure
  * the host is left where it is or relocated-but-unthrottled, both harmless.
+ *
+ * Async because cleanup must await the reaped child: removing a cgroup that
+ * still holds the (SIGKILLed but unreaped) sleeper throws, and that cleanup
+ * failure must never cancel an already-proven result.
  */
-export function probeCpuQuotaDelegation(): CgroupDelegation | null {
+export async function probeCpuQuotaDelegation(): Promise<CgroupDelegation | null> {
   for (const parent of candidateParents()) {
     const selfDir = path.join(parent, 'palmshed-self');
     const testDir = path.join(parent, `palmshed-probe-${process.pid}`);
-    let child: ReturnType<typeof spawn> | null = null;
     try {
       // Relocate ourselves first: moves below only work downward from here,
       // and the parent must be member-free (of us) before it distributes.
@@ -117,31 +143,48 @@ export function probeCpuQuotaDelegation(): CgroupDelegation | null {
       fssync.writeFileSync(path.join(selfDir, 'cgroup.procs'), String(process.pid));
       enableCpuController(parent);
       fssync.mkdirSync(testDir);
+      fssync.writeFileSync(path.join(testDir, 'cpu.max'), unlimitedCpuMax());
+      const child = spawn('sleep', ['10'], { stdio: 'ignore' });
+      child.on('error', () => {
+        // spawn failure surfaces as a missing PID below
+      });
+      if (child.pid === undefined) {
+        try {
+          fssync.rmdirSync(testDir);
+        } catch {
+          // best effort
+        }
+        continue;
+      }
       try {
-        fssync.writeFileSync(path.join(testDir, 'cpu.max'), unlimitedCpuMax());
-        child = spawn('sleep', ['10'], { stdio: 'ignore' });
-        child.on('error', () => {
-          // spawn failure surfaces below as a missing PID
-        });
-        if (child.pid === undefined) continue;
-        // The genuine proof: moving a live process of our own uid. Throws
-        // (EACCES and friends) when this parent cannot receive moves.
         fssync.writeFileSync(path.join(testDir, 'cgroup.procs'), String(child.pid));
-        return { parentDir: parent };
-      } finally {
-        if (child !== null) {
-          try {
-            child.kill('SIGKILL');
-          } catch {
-            // already exited; reaped by the runtime SIGCHLD handling
-          }
+      } catch {
+        try {
+          child.kill('SIGKILL');
+        } catch {
+          // already exited
         }
         try {
           fssync.rmdirSync(testDir);
         } catch {
-          // best effort; an empty test dir is harmless residue
+          // best effort
         }
+        continue;
       }
+      // Proven: clean up, await the reaping first, and never let cleanup
+      // failures cancel the proof.
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        // already exited
+      }
+      await waitForChildExit(child, 5000);
+      try {
+        fssync.rmdirSync(testDir);
+      } catch {
+        // best effort; an empty test dir is harmless residue
+      }
+      return { parentDir: parent };
     } catch {
       continue;
     }

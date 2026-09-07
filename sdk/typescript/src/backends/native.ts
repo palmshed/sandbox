@@ -188,7 +188,7 @@ export class NativeBackend implements BackendEngine {
     // quotas). A creation failure after a passing probe degrades the same way
     // instead of failing init: the flag always reflects reality.
     if (process.platform === 'linux') {
-      const delegation = probeCpuQuotaDelegation();
+      const delegation = await probeCpuQuotaDelegation();
       if (delegation !== null) {
         try {
           const name = `palmshed-sb-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
