@@ -1,5 +1,6 @@
 import { spawn } from 'child_process';
 import * as fs from 'fs/promises';
+import * as os from 'os';
 import * as path from 'path';
 import { BackendCapabilities, BackendEngine } from './interface.js';
 import {
@@ -26,9 +27,10 @@ export class DockerBackend implements BackendEngine {
   // limits serialize on the container-wide setting; OOM attribution falls
   // back to exit-code 137 once a container has OOMed before (stale flag);
   // clearing a limit materializes unlimited as 1TiB (daemon validation
-  // rejects the 0/-1 spellings on update); unlimited CPU materializes as
-  // 1024 cores for the same reason; override dances share one mutex across
-  // memory and CPU updates.
+  // rejects the 0/-1 spellings on update); clearing CPU quota restores the
+  // host count (the daemon validates --cpus into 0.01..host CPUs, so above
+  // capacity is rejected rather than passing through); override dances
+  // share one mutex across memory and CPU updates.
   public readonly capabilities: BackendCapabilities = {
     filesystem: true,
     networkIsolation: true,
@@ -407,17 +409,19 @@ export class DockerBackend implements BackendEngine {
 
   /**
    * Apply a container-wide CPU quota in cores (null clears it). Mirror
-   * updated only on success. Clearing materializes unlimited as 1024 cores:
-   * `--cpus=0` semantics are uncertain across daemons (the same class of
-   * validation trouble as memory 0/-1), while an explicit huge value always
-   * validates and never binds a real workload. The mirror still records null
-   * (conceptually unlimited), which stays consistent because every override
-   * apply re-pins the value explicitly.
+   * updated only on success. Clearing restores the host CPU count: the
+   * daemon validates `--cpus` into 0.01..host CPUs (observed: values above
+   * the count are rejected, so neither 0 nor huge stand-ins work), and the
+   * full count can never bind. Resolved from the daemon (`docker info`)
+   * with an os.cpus fallback; a last-resort 64 keeps the dance total
+   * rather than failing the restore.
    */
   private async applyContainerCpus(targetCores: number | null): Promise<void> {
     if (targetCores === this.appliedCpuQuota) return;
-    const UNLIMITED_CPUS = 1024;
-    const effective = targetCores === null ? UNLIMITED_CPUS : targetCores;
+    let effective = targetCores;
+    if (effective === null) {
+      effective = await this.resolveHostCpus();
+    }
     const res = await this.runDockerCmd(['update', `--cpus=${effective}`, this.containerId]);
     if (res.exitCode !== 0) {
       throw new SandboxError(
@@ -426,6 +430,33 @@ export class DockerBackend implements BackendEngine {
       );
     }
     this.appliedCpuQuota = targetCores;
+  }
+
+  /**
+   * Host CPU count for materializing unlimited restores. Daemon truth first
+   * (`docker info` NCPU), SDK-host fallback (correct for the local daemons
+   * this driver supports), cached per sandbox.
+   */
+  private hostCpuCountCache: number | null = null;
+
+  private async resolveHostCpus(): Promise<number> {
+    if (this.hostCpuCountCache !== null) return this.hostCpuCountCache;
+    try {
+      const res = await this.runDockerCmd(['info', '--format', '{{.NCPU}}']);
+      const ncpu = parseInt(res.stdout.trim(), 10);
+      if (res.exitCode === 0 && Number.isFinite(ncpu) && ncpu > 0) {
+        this.hostCpuCountCache = ncpu;
+        return ncpu;
+      }
+    } catch {
+      // fall through to local fallbacks
+    }
+    if (os.cpus().length > 0) {
+      this.hostCpuCountCache = os.cpus().length;
+      return os.cpus().length;
+    }
+    this.hostCpuCountCache = 64;
+    return 64;
   }
 
   /** Read the container OOMKilled flag (false when unreadable; exec then fails honestly). */
