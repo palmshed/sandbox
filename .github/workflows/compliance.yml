@@ -26,6 +26,18 @@ jobs:
           cache-dependency-path: 'sdk/typescript/package-lock.json'
 
       # Same script as `npm run preflight`; installs SDK deps, builds, and runs
-      # the compliance + TCK suites.
+      # the compliance + TCK suites. CPUQUOTA_EVIDENCE makes the quota suite
+      # write a proof-of-execution artifact when its enforcement group runs
+      # (skipped runs write nothing); absence on skip platforms is expected.
       - name: Verify Specification & Compliance Contract
         run: node scripts/verify-conformance.mjs
+        env:
+          CPUQUOTA_EVIDENCE: cpuquota-evidence-${{ matrix.os }}.json
+
+      - name: Upload quota evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpuquota-evidence-${{ matrix.os }}
+          path: cpuquota-evidence-${{ matrix.os }}.json
+          if-no-files-found: warn
+          retention-days: 30

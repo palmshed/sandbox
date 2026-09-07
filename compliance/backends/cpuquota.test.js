@@ -166,6 +166,36 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
         assert.equal(execution.status(), 'completed', `quota ${String(quota)} runs unenforced`);
       }
     });
+
+    await t.test('writes evidence artifact when requested', async () => {
+      // Proof-of-execution for CI: skipped runs write nothing (this group
+      // only runs when the flag promotes), so an uploaded artifact proves
+      // the enforcement tests above really executed on that host. Local runs
+      // leave no residue (env unset).
+      const evidencePath = process.env.CPUQUOTA_EVIDENCE;
+      if (!evidencePath) return;
+      const cg = await sandbox.exec('cat /proc/self/cgroup');
+      await cg.wait();
+      assert.equal(cg.status(), 'completed');
+      const line = cg.stdout().trim().split('\n').find((l) => l.startsWith('0::')) ?? '';
+      const cpuMax = await fs.readFile(`/sys/fs/cgroup${line.slice(3) || '/'}/cpu.max`, 'utf-8');
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(
+        evidencePath,
+        JSON.stringify(
+          {
+            suite: 'cpuquota native Linux enforcement',
+            platform: process.platform,
+            flag: sandbox.capabilities.cpuQuotaLimits,
+            cgroup: line,
+            cpuMax: cpuMax.trim(),
+            ok: true,
+          },
+          null,
+          2
+        ) + '\n'
+      );
+    });
   });
 
   await t.test('native Windows job enforcement', async (t) => {
