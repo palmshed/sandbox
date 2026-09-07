@@ -225,7 +225,11 @@ function buildSelfAssignScript(): string {
 const SELF_ASSIGN_ENCODED = Buffer.from(buildSelfAssignScript(), 'utf16le').toString('base64');
 
 export function buildSelfAssignPrefix(): string {
-  return `powershell -NoProfile -NonInteractive -EncodedCommand ${SELF_ASSIGN_ENCODED} && `;
+  // The < nul stdin redirect is load-bearing, not hygiene: powershell.exe
+  // with a redirected stdin pipe held open can wait on stdin at exit instead
+  // of terminating, hanging the execution until the wall timeout. An
+  // immediate EOF removes that path entirely.
+  return `powershell -NoProfile -NonInteractive -EncodedCommand ${SELF_ASSIGN_ENCODED} < nul && `;
 }
 
 /**
