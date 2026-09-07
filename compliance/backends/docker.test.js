@@ -8,9 +8,9 @@ import { DockerBackend } from '../../sdk/typescript/dist/backends/docker.js';
  * Docker capability contract test. This suite intentionally does NOT require a
  * Docker daemon (no CI runner installs one), so it asserts the capability
  * matrix and pre-init failure states only. The explicit matrix is the contract:
- * Docker currently claims only filesystem/streaming; cpuLimits, memoryLimits
- * and networkIsolation are `false` until backend-parity work item #4 lands
- * implementation + integration tests.
+ * Docker claims filesystem/streaming plus the work-item-#4 trio (cpuLimits,
+ * memoryLimits, networkIsolation); live-container enforcement is covered by
+ * docker-enforcement.test.js, which is daemon-gated and runs on CI Ubuntu.
  */
 test('Compliance Suite: Backend Engine Contract (DockerBackend) [Spec-Version: 1.0.0]', async (t) => {
   const engine = new DockerBackend();
@@ -22,9 +22,9 @@ test('Compliance Suite: Backend Engine Contract (DockerBackend) [Spec-Version: 1
   await t.test('Capability matrix is explicit and honest [Spec-Version: 1.0.0]', async () => {
     assert.deepEqual(engine.capabilities, {
       filesystem: true,
-      networkIsolation: false,
-      cpuLimits: false,
-      memoryLimits: false,
+      networkIsolation: true,
+      cpuLimits: true,
+      memoryLimits: true,
       streaming: true,
       osFilesystemIsolation: 'unsupported',
       remoteExecution: false,

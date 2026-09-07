@@ -7,7 +7,7 @@ export interface ResourceLimits {
   cpu?: number;
   /** CPU core allocation quota (experimental, not yet enforced by native backend) */
   cpuQuota?: number;
-  /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend. */
+  /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend; enforced per process via RLIMIT_CPU (one-second granularity) by the docker backend. */
   cpuTimeLimit?: number;
   /** Memory limit, e.g. "512MB", "2GB", or bytes in number */
   memory?: string | number;
@@ -22,7 +22,7 @@ export interface SandboxOptions {
   cpu?: number;
   /** CPU core allocation quota (experimental, not yet enforced by native backend) */
   cpuQuota?: number;
-  /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend. */
+  /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend; enforced per process via RLIMIT_CPU (one-second granularity) by the docker backend. */
   cpuTimeLimit?: number;
   /** Memory limit e.g. "512MB" */
   memory?: string | number;
@@ -49,7 +49,7 @@ export interface SandboxOptions {
 export interface ExecOptions {
   /** Override default execution timeout for this run (ms) */
   timeout?: number;
-  /** CPU time budget for this execution (ms). Overrides sandbox-level cpuTimeLimit. Enforced across the process group. */
+  /** CPU time budget for this execution (ms). Overrides sandbox-level cpuTimeLimit. Enforced across the process group by the native backend; enforced per process via RLIMIT_CPU (one-second granularity) by the docker backend. */
   cpuTimeLimit?: number;
   /** CPU core allocation quota for this execution (experimental) */
   cpuQuota?: number;
