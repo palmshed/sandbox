@@ -12,7 +12,7 @@ export interface BackendCapabilities {
   remoteExecution?: boolean;
   /** RFC 0006: whether the executed process tree is confined to the workspace + runtime allowlist. */
   osFilesystemIsolation?: OsFilesystemIsolationStatus;
-  /** RFC 0007: whether the backend enforces hard CPU rate caps by throttling (never killing). True on Linux where cgroup delegation probes pass; false elsewhere until per-backend implementation promotes it. */
+  /** RFC 0007: whether the backend enforces hard CPU rate caps by throttling (never killing). True on Linux and Windows where their probes pass; false elsewhere until per-backend implementation promotes it. */
   cpuQuotaLimits?: boolean;
 }
 
