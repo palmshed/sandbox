@@ -315,12 +315,19 @@ export class DockerBackend implements BackendEngine {
     return result;
   }
 
-  /** Apply a container-wide memory limit (null clears it). Mirror updated only on success. */
+  /**
+   * Apply a container-wide memory limit (null clears it). Mirror updated only
+   * on success. Applies always pin swap equal to memory (no swap spillover,
+   * so OOM is deterministic). Clearing passes only `--memory 0`: bundling
+   * `--memory-swap -1` in the same update trips daemon-side validation, and
+   * a stale swap cap cannot bind RAM while memory.max is unlimited, so the
+   * swap flag is intentionally left untouched on clear.
+   */
   private async applyContainerMemory(targetBytes: number | null): Promise<void> {
     if (targetBytes === this.appliedMemoryBytes) return;
     const memArgs =
       targetBytes === null
-        ? ['--memory', '0', '--memory-swap', '-1']
+        ? ['--memory', '0']
         : [`--memory=${targetBytes}`, `--memory-swap=${targetBytes}`];
     const res = await this.runDockerCmd(['update', ...memArgs, this.containerId]);
     if (res.exitCode !== 0) {
