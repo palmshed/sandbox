@@ -58,12 +58,7 @@ function dockerLinuxAvailable() {
 // control (ratio floor 1.5), never absolute walls, so machine speed and
 // shared-runner noise cancel instead of flaking. 100M iterations keeps the
 // CPU footprint small while dwarfing timer granularity.
-const ITER_BURN = `node -e "
-  const t0 = Date.now();
-  let x = 0;
-  for (let i = 0; i < 100000000; i++) { x += Math.sqrt(x + 1); }
-  console.log('burnwall=' + (Date.now() - t0));
-"`;
+const ITER_BURN = `node -e "const t0 = Date.now(); let x = 0; for (let i = 0; i < 100000000; i++) { x += Math.sqrt(x + 1); } console.log('burnwall=' + (Date.now() - t0));"`;
 
 async function burnCpu(sandbox, command, options) {
   const execution = await sandbox.exec(command, options);
