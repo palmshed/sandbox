@@ -12,10 +12,12 @@ import * as os from 'os';
  * recompile the C# every time. No native dependencies; works wherever
  * powershell.exe exists (5.1 and 7 both run the Add-Type below).
  *
- * Documented residuals: assignment lands tens of milliseconds after spawn
- * (helper round trip), so sub-50ms forkers may partially escape before the
- * root joins; per-exec overrides serialize on a mutex like every other
- * backend dance. Never kills: throttling only.
+ * Documented residuals: quota executions pay a PowerShell startup plus a
+ * small C# compile for the self-assign prefix (unenforced executions never
+ * pay it); one SDK-side duplicated handle slot leaks per quota sandbox
+ * (Node cannot close foreign-table handles; process exit reclaims it).
+ * Per-exec overrides serialize on a mutex like every other backend dance.
+ * Never kills: throttling only.
  */
 
 // Numeric constants below mirror the verified Win32 values (JobObjectCpu-
@@ -64,8 +66,12 @@ function buildHelperScript(): string {
     '  public static extern bool QueryInformationJobObject(IntPtr h, int c, out RateInfo o, uint l, IntPtr r);',
     '  [DllImport("kernel32.dll", SetLastError = true)]',
     '  public static extern bool AssignProcessToJobObject(IntPtr h, IntPtr p);',
-    '  [DllImport("kernel32.dll")]',
-    '  public static extern IntPtr OpenProcess(uint a, bool i, uint p);',
+  '  [DllImport("kernel32.dll")]',
+  '  public static extern IntPtr OpenProcess(uint a, bool i, uint p);',
+  '  [DllImport("kernel32.dll", SetLastError = true)]',
+  '  public static extern bool DuplicateHandle(IntPtr hp, IntPtr hs, IntPtr ht, out IntPtr d, uint a, bool i, uint o);',
+  '  [DllImport("kernel32.dll")]',
+  '  public static extern IntPtr GetCurrentProcess();',
     '  [DllImport("kernel32.dll", SetLastError = true)]',
     '  public static extern bool CloseHandle(IntPtr h);',
     '  public const int CpuRateClass = 15;',
@@ -107,6 +113,20 @@ function buildHelperScript(): string {
     '          }',
     '        }',
     '      }',
+    "      'dup' {",
+    "        if (-not $jobs.ContainsKey($req.job)) { $res.error = 'unknown job' }",
+    '        else {',
+    '          $sdk = [QJob]::OpenProcess(64, $false, [uint32]$req.sdkPid)',
+    "          if ($sdk -eq [IntPtr]::Zero) { $res.error = 'OpenProcess sdk failed' }",
+    '          else {',
+    '            try {',
+    '              $d = [IntPtr]::Zero',
+    '              if ([QJob]::DuplicateHandle($sdk, $jobs[$req.job], [QJob]::GetCurrentProcess(), [ref]$d, 0, $false, 2)) { $res.ok = $true; $res.handle = $d.ToInt64() }',
+    "              else { $res.error = 'DuplicateHandle failed' }",
+    '            } finally { [QJob]::CloseHandle($sdk) | Out-Null }',
+    '          }',
+    '        }',
+    '      }',
     "      'query' {",
     "        if (-not $jobs.ContainsKey($req.job)) { $res.error = 'unknown job' }",
     '        else {',
@@ -132,16 +152,76 @@ function buildHelperScript(): string {
 }
 
 export interface QuotaJobRequest {
-  cmd: 'ping' | 'create' | 'set' | 'assign' | 'query' | 'close' | 'exit';
+  cmd: 'ping' | 'create' | 'set' | 'assign' | 'query' | 'close' | 'exit' | 'dup';
   job?: string;
   rate?: number;
   targetPid?: number;
+  sdkPid?: number;
 }
 
 export interface QuotaJobResponse {
   ok: boolean;
   rate?: number;
+  handle?: number;
   error?: string;
+}
+
+// Environment handoff for the self-assign prefix: numeric job-handle value
+// (valid in the SDK process table, duplicated there by the helper) plus the
+// SDK pid, both forced after user env so workloads cannot unset them.
+export const QUOTA_JOB_HANDLE_ENV = 'PALMSHED_CPU_JOB_HANDLE';
+export const QUOTA_JOB_SDKPID_ENV = 'PALMSHED_CPU_JOB_SDKPID';
+
+/**
+ * The per-execution self-assign prefix (Windows only): a self-contained
+ * powershell invocation that duplicates the sandbox job handle into itself
+ * and joins the job BEFORE forking anything, closing the birth race where
+ * children forked before a host-side assignment would inherit no job
+ * forever. Runs as `powershell ... && <command>`, so any failure fails the
+ * execution loudly instead of running uncapped. Costs a PowerShell startup
+ * plus a small C# compile per quota execution; unenforced executions never
+ * pay it. Distinct exit codes (11/12/13) identify the failing step.
+ *
+ * Quoting: the script travels as Base64 (EncodedCommand, mirroring the
+ * helper) so embedded quotes and newlines never interact with cmd parsing.
+ */
+function buildSelfAssignScript(): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    'Add-Type @"',
+    'using System;',
+    'using System.Runtime.InteropServices;',
+    'public static class QSelf {',
+    '  [DllImport("kernel32.dll")]',
+    '  public static extern IntPtr OpenProcess(uint a, bool i, uint p);',
+    '  [DllImport("kernel32.dll", SetLastError = true)]',
+    '  public static extern bool DuplicateHandle(IntPtr hp, IntPtr hs, IntPtr ht, out IntPtr d, uint a, bool i, uint o);',
+    '  [DllImport("kernel32.dll", SetLastError = true)]',
+    '  public static extern bool AssignProcessToJobObject(IntPtr h, IntPtr p);',
+    '  [DllImport("kernel32.dll")]',
+    '  public static extern IntPtr GetCurrentProcess();',
+    '  [DllImport("kernel32.dll", SetLastError = true)]',
+    '  public static extern bool CloseHandle(IntPtr h);',
+    '}',
+    '"@',
+    `$sdk = [QSelf]::OpenProcess(64, $false, [uint32]$env:${QUOTA_JOB_SDKPID_ENV})`,
+    'if ($sdk -eq [IntPtr]::Zero) { exit 11 }',
+    '$mine = [IntPtr]::Zero',
+    '$dupOk = $false',
+    'try {',
+    `$dupOk = [QSelf]::DuplicateHandle($sdk, [IntPtr][int]$env:${QUOTA_JOB_HANDLE_ENV}, [QSelf]::GetCurrentProcess(), [ref]$mine, 0, $false, 2)`,
+    '} finally { $null = [QSelf]::CloseHandle($sdk) }',
+    'if (-not $dupOk) { exit 12 }',
+    'try {',
+    '  if (-not [QSelf]::AssignProcessToJobObject($mine, [QSelf]::GetCurrentProcess())) { exit 13 }',
+    '} finally { $null = [QSelf]::CloseHandle($mine) }',
+  ].join('\n');
+}
+
+const SELF_ASSIGN_ENCODED = Buffer.from(buildSelfAssignScript(), 'utf16le').toString('base64');
+
+export function buildSelfAssignPrefix(): string {
+  return `powershell -NoProfile -NonInteractive -EncodedCommand ${SELF_ASSIGN_ENCODED} && `;
 }
 
 /**
