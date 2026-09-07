@@ -9,17 +9,25 @@ import { Sandbox, SandboxResourceError } from '../../sdk/typescript/dist/index.j
  * Docker backend-parity suite (work item #4): CPU time-budget enforcement,
  * per-execution memory overrides, and network policies beyond `disabled`,
  * exercised end-to-end through the real `Sandbox` API against a live
- * container. Gated on a Docker daemon: when `docker info` fails (macOS and
- * Windows CI runners have no daemon), the suite skips rather than asserting.
- * In practice this runs on CI Ubuntu, where the daemon is native Linux.
+ * container. Gated on a Linux Docker daemon: when no daemon answers, or the
+ * daemon cannot run Linux containers (Windows-container daemons answer
+ * `docker info` fine but cannot run the Linux test image), the suite skips
+ * rather than asserting. In practice this runs on CI Ubuntu, where the
+ * daemon is native Linux.
  *
  * Each enforcement attempt asserts the attempt FAILS with the documented
  * SandboxResourceError while the sandbox stays healthy and reusable.
  */
-function dockerAvailable() {
+function dockerLinuxAvailable() {
   try {
-    execSync('docker info', { stdio: 'ignore', timeout: 15000 });
-    return true;
+    const ostype = execSync('docker info --format {{.OSType}}', {
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 15000,
+    })
+      .toString()
+      .trim()
+      .toLowerCase();
+    return ostype === 'linux';
   } catch {
     return false;
   }
@@ -39,8 +47,8 @@ const ALLOC_BOMB = `node -e "
 "`;
 
 test('Docker backend parity: resource and network enforcement (item #4)', async (t) => {
-  if (!dockerAvailable()) {
-    return t.skip('no Docker daemon on this host; parity assertions need a live container');
+  if (!dockerLinuxAvailable()) {
+    return t.skip('no Linux Docker daemon on this host; parity assertions need a live Linux container');
   }
 
   await t.test('CPU time budget breach rejects ERR_CPU_EXCEEDED', async () => {

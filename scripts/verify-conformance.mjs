@@ -34,9 +34,25 @@ function main() {
   const res = run('node', ['--test', ...files], { cwd: REPO_ROOT, timeoutMs: 600000 });
   const counts = nodeTestCounts(res.stdout + '\n' + res.stderr);
   const summary = counts && counts.tests != null ? `${counts.pass}/${counts.tests} tests` : 'no test summary';
+  const ok = res.ok && counts?.fail === 0;
+  if (!ok) {
+    // The captured TAP output never reaches the CI log otherwise, leaving
+    // red runs without failing test names. Print the failing sections.
+    const lines = (res.stdout + '\n' + res.stderr).split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      if (/^not ok\b/.test(lines[i].trim())) {
+        out.push(...lines.slice(i, i + 18));
+      }
+    }
+    if (out.length) {
+      console.log(`--- failing tests (${out.filter((l) => /^not ok\b/.test(l.trim())).length}) ---`);
+      console.log(out.slice(0, 120).join('\n'));
+    }
+  }
   report.check(
     'compliance suite + TCK',
-    res.ok && counts?.fail === 0,
+    ok,
     summary
   );
 
