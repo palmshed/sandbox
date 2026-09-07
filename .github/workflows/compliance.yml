@@ -25,6 +25,20 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'sdk/typescript/package-lock.json'
 
+      # RFC 0007 quota tests need a delegated cgroup subtree on Linux. GitHub
+      # runners may not delegate one to the job user, so provision it here
+      # (Ubuntu only) before the suite runs: a runner-owned directory with
+      # the cpu controller enabled, discovered via PALMSHED_CGROUP_PARENT.
+      # Harmless when native delegation already exists (the probe tries the
+      # override first and the directory creation is idempotent).
+      - name: Provision cgroup delegation for quota tests
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo mkdir -p /sys/fs/cgroup/palmshed-test
+          sudo chown -R "$(id -u):$(id -g)" /sys/fs/cgroup/palmshed-test
+          echo +cpu | sudo tee /sys/fs/cgroup/palmshed-test/cgroup.subtree_control > /dev/null
+          echo "PALMSHED_CGROUP_PARENT=/sys/fs/cgroup/palmshed-test" >> "$GITHUB_ENV"
+
       # Same script as `npm run preflight`; installs SDK deps, builds, and runs
       # the compliance + TCK suites.
       - name: Verify Specification & Compliance Contract

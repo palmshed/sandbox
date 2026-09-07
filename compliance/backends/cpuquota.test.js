@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
+import * as fs from 'node:fs/promises';
 import { Sandbox } from '../../sdk/typescript/dist/index.js';
 
 /**
@@ -19,6 +20,10 @@ import { Sandbox } from '../../sdk/typescript/dist/index.js';
  * is backend-coupled and belongs in SDK unit tests at implementation time;
  * this suite asserts portable behavior (wall-clock contrast with wide
  * margins, override scoping, inheritance, budget interplay, validation).
+ * Exception: the native Linux group reads back cpu.max through the
+ * workload-reported cgroup path (same host view, no backend API needed),
+ * which deterministically proves both the applied value and that the move
+ * actually happened.
  */
 function dockerLinuxAvailable() {
   try {
@@ -69,6 +74,27 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     if (sandbox.capabilities.cpuQuotaLimits !== true) {
       return t.skip('cpuQuotaLimits not enforced here yet; skipping until promotion');
     }
+
+    await t.test('rate readback via the workload cgroup', async () => {
+      const cg = await sandbox.exec('cat /proc/self/cgroup');
+      await cg.wait();
+      assert.equal(cg.status(), 'completed');
+      const line = cg
+        .stdout()
+        .trim()
+        .split('\n')
+        .find((l) => l.startsWith('0::'));
+      assert.ok(line, `cgroup v2 entry present, got: ${cg.stdout().trim()}`);
+      const rel = line.slice(3) || '/';
+      // Same host cgroupfs view (native backend shares namespaces except
+      // net/user): reading the workload's own cpu.max proves both the applied
+      // value and that the spawn-time move actually happened.
+      const cpuMax = await fs.readFile(`/sys/fs/cgroup${rel}/cpu.max`, 'utf-8');
+      assert.ok(
+        cpuMax.trim().startsWith('50000 '),
+        `quota 0.5 applied, got: ${cpuMax.trim()}`
+      );
+    });
 
     await t.test('throttled burn takes longer wall time than CPU time', async () => {
       const start = Date.now();

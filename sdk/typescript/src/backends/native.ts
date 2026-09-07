@@ -19,6 +19,14 @@ import {
 } from '../core/crashRecovery.js';
 import { probeOsFilesystemIsolation, OsFilesystemProbe } from '../osfs/confinement.js';
 import { deriveRuntimeAllowlist } from '../osfs/allowlist.js';
+import {
+  probeCpuQuotaDelegation,
+  createSandboxCgroup,
+  setCpuMax,
+  movePidToCgroup,
+  removeSandboxCgroup,
+  isProcessAlive,
+} from '../cgroups/cpu-quota.js';
 
 /**
  * Read the current Windows process table via PowerShell CIM (the replacement
@@ -84,6 +92,12 @@ export class NativeBackend implements BackendEngine {
   private networkIsolationAvailable = true;
   /** RFC 0006 confined-execution state, filled by the init-time probe */
   private osfs: OsFilesystemProbe | null = null;
+  /** RFC 0007 per-sandbox cgroup path when delegation is available (Linux only) */
+  private cpuCgroupPath: string | null = null;
+  /** Mirror of the quota currently applied to the sandbox cgroup (cores; null = unlimited) */
+  private appliedCpuQuota: number | null = null;
+  /** Serializes quota override dances (apply, exec, restore) within one sandbox */
+  private cpuQuotaChain: Promise<void> = Promise.resolve();
   /** Crash-recovery exit/signal cleanup bound to this instance (RFC 0005) */
   private crashCleanup: (() => void) | null = null;
 
@@ -168,6 +182,33 @@ export class NativeBackend implements BackendEngine {
       this.capabilities.osFilesystemIsolation = 'unsupported';
     }
 
+    // RFC 0007: CPU hard quota via cgroups v2 (Linux only). Probe delegation;
+    // create one cgroup per sandbox and promote the capability only when the
+    // probe passes. Anything else leaves the flag false (accepted-but-ignored
+    // quotas). A creation failure after a passing probe degrades the same way
+    // instead of failing init: the flag always reflects reality.
+    if (process.platform === 'linux') {
+      const delegation = probeCpuQuotaDelegation();
+      if (delegation !== null) {
+        try {
+          const name = `palmshed-sb-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+          this.cpuCgroupPath = createSandboxCgroup(delegation.parentDir, name);
+          const quota = this.resolveCpuQuotaCores();
+          if (quota !== null) {
+            setCpuMax(this.cpuCgroupPath, quota);
+            this.appliedCpuQuota = quota;
+          }
+          this.capabilities.cpuQuotaLimits = true;
+        } catch (err) {
+          this.cpuCgroupPath = null;
+          logDebug('cpuquota.unavailable', {
+            backend: this.name,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
     logDebug('backend.init', {
       backend: this.name,
       networkIsolation: this.capabilities.networkIsolation,
@@ -205,6 +246,53 @@ export class NativeBackend implements BackendEngine {
     const rawCpuTimeLimit = options.cpuTimeLimit ?? this.options.cpuTimeLimit;
     const cpuTimeLimitMs = rawCpuTimeLimit !== undefined && rawCpuTimeLimit > 0 ? rawCpuTimeLimit : null;
 
+    // RFC 0007: per-execution quota override dance (Linux cgroup only). When
+    // the wanted quota differs from the applied mirror, serialize apply, exec,
+    // restore on a chain so concurrent overrides cannot interleave writes to
+    // the same cpu.max. Apply failure rejects before exec (never run
+    // uncapped under a true flag); restore runs in the settlement wrapper
+    // below and never masks the execution outcome.
+    const execQuota = this.resolveCpuQuotaCores(options.cpuQuota);
+    const defaultQuota = this.resolveCpuQuotaCores();
+    let quotaRestore: (() => void) | null = null;
+    if (this.cpuCgroupPath !== null && execQuota !== this.appliedCpuQuota) {
+      const previous = this.cpuQuotaChain;
+      let release!: () => void;
+      const current = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      this.cpuQuotaChain = current;
+      await previous;
+      const cgroupPath = this.cpuCgroupPath;
+      try {
+        setCpuMax(cgroupPath, execQuota);
+        this.appliedCpuQuota = execQuota;
+      } catch (err) {
+        release();
+        throw new SandboxError(
+          `Failed to apply CPU quota override: ${err instanceof Error ? err.message : String(err)}`,
+          'EXEC_FAILED'
+        );
+      }
+      quotaRestore = () => {
+        try {
+          setCpuMax(cgroupPath, defaultQuota);
+          this.appliedCpuQuota = defaultQuota;
+        } catch (err) {
+          // Never mask the execution result. The mirror keeps the stale
+          // value, so the next dance retries the restore instead of running
+          // under a wrong limit silently.
+          logDebug('resource.restoreFailed', {
+            backend: this.name,
+            resource: 'cpuQuota',
+            error: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          release();
+        }
+      };
+    }
+
     // Parse disk quota (bytes) and snapshot the workspace so files created by
     // an over-quota execution can be rolled back on failure, keeping the
     // sandbox reusable (recoverable: true) despite having no delete API.
@@ -214,7 +302,7 @@ export class NativeBackend implements BackendEngine {
       preExecFiles = await this.listWorkspaceFiles();
     }
 
-    return new Promise((resolve, reject) => {
+    const settlement = new Promise<ExecResult>((resolve, reject) => {
       let stdoutAcc = '';
       let stderrAcc = '';
       let timedOut = false;
@@ -507,6 +595,21 @@ export class NativeBackend implements BackendEngine {
       this.activeProcesses.add(child);
       if (child.pid !== undefined) {
         recordSandboxPgid(this.sandboxDir, child.pid);
+      }
+      // RFC 0007: move the workload tree into the sandbox cgroup (Linux only,
+      // when delegation is available). Membership is inherited across fork, so
+      // moving the spawned root confines the whole tree, including the
+      // unshare/Landlock chain which preserves the PID.
+      if (this.cpuCgroupPath !== null && child.pid !== undefined) {
+        try {
+          movePidToCgroup(this.cpuCgroupPath, child.pid);
+        } catch {
+          // A fast command may have exited between spawn and move; only fail
+          // honestly when the child is still alive (it would run unthrottled).
+          if (isProcessAlive(child.pid)) {
+            throw new SandboxError('Failed to move workload into CPU cgroup', 'EXEC_FAILED');
+          }
+        }
       }
       logDebug('exec.start', {
         backend: this.name,
@@ -803,6 +906,22 @@ export class NativeBackend implements BackendEngine {
         });
       });
     });
+    // RFC 0007: run the quota restore (if any) on settlement without masking
+    // the execution outcome either way.
+    if (quotaRestore === null) return settlement;
+    return settlement.finally(() => {
+      quotaRestore!();
+    });
+  }
+
+  /**
+   * Resolve the effective hard quota in cores: per-execution cpuQuota takes
+   * precedence, then sandbox cpuQuota, then legacy sandbox cpu. Values at or
+   * below zero (and NaN) mean unset, mirroring cpuTimeLimit handling.
+   */
+  private resolveCpuQuotaCores(execQuota?: number): number | null {
+    const raw = execQuota ?? this.options.cpuQuota ?? this.options.cpu;
+    return typeof raw === 'number' && raw > 0 ? raw : null;
   }
 
   /**
@@ -1091,6 +1210,13 @@ export class NativeBackend implements BackendEngine {
       }
     }
     this.activeProcesses.clear();
+
+    // RFC 0007: remove the per-sandbox cgroup best effort (killed tree above
+    // means it should be empty; lingering threads make rmdir fail silently).
+    if (this.cpuCgroupPath !== null) {
+      removeSandboxCgroup(this.cpuCgroupPath);
+      this.cpuCgroupPath = null;
+    }
 
     try {
       if (this.sandboxDir) {
