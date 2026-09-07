@@ -79,6 +79,7 @@ function buildHelperScript(): string {
     '}',
     '"@',
     '$jobs = @{}',
+    'function w32code { return [System.Runtime.InteropServices.Marshal]::GetLastWin32Error() }',
     ':outer while (($line = [Console]::In.ReadLine()) -ne $null) {',
     '  $res = @{ ok = $false }',
     '  try {',
@@ -87,7 +88,7 @@ function buildHelperScript(): string {
     "      'ping' { $res.ok = $true }",
     "      'create' {",
     '        $h = [QJob]::CreateJobObject([IntPtr]::Zero, $null)',
-    "        if ($h -eq [IntPtr]::Zero) { $res.error = 'CreateJobObject failed' }",
+    "        if ($h -eq [IntPtr]::Zero) { $res.error = 'CreateJobObject failed'; $res.code = w32code }",
     '        else { $jobs[$req.job] = $h; $res.ok = $true }',
     '      }',
     "      'set' {",
@@ -97,18 +98,18 @@ function buildHelperScript(): string {
     '          $info.ControlFlags = 5',
     '          $info.CpuRate = [uint32]$req.rate',
     '          if ([QJob]::SetInformationJobObject($jobs[$req.job], 15, [ref]$info, 8)) { $res.ok = $true }',
-    "          else { $res.error = 'SetInformationJobObject failed' }",
+    "          else { $res.error = 'SetInformationJobObject failed'; $res.code = w32code }",
     '        }',
     '      }',
     "      'assign' {",
     "        if (-not $jobs.ContainsKey($req.job)) { $res.error = 'unknown job' }",
     '        else {',
     '          $ph = [QJob]::OpenProcess(257, $false, [uint32]$req.targetPid)',
-    "          if ($ph -eq [IntPtr]::Zero) { $res.error = 'OpenProcess failed (exited?)' }",
+    "          if ($ph -eq [IntPtr]::Zero) { $res.error = 'OpenProcess failed (exited?)'; $res.code = w32code }",
     '          else {',
     '            try {',
     '              if ([QJob]::AssignProcessToJobObject($jobs[$req.job], $ph)) { $res.ok = $true }',
-    "              else { $res.error = 'AssignProcessToJobObject failed (already in a job?)' }",
+    "              else { $res.error = 'AssignProcessToJobObject failed (already in a job?)'; $res.code = w32code }",
     '            } finally { [QJob]::CloseHandle($ph) | Out-Null }',
     '          }',
     '        }',
@@ -117,12 +118,12 @@ function buildHelperScript(): string {
     "        if (-not $jobs.ContainsKey($req.job)) { $res.error = 'unknown job' }",
     '        else {',
     '          $sdk = [QJob]::OpenProcess(64, $false, [uint32]$req.sdkPid)',
-    "          if ($sdk -eq [IntPtr]::Zero) { $res.error = 'OpenProcess sdk failed' }",
+    "          if ($sdk -eq [IntPtr]::Zero) { $res.error = 'OpenProcess sdk failed'; $res.code = w32code }",
     '          else {',
     '            try {',
     '              $d = [IntPtr]::Zero',
     '              if ([QJob]::DuplicateHandle($sdk, $jobs[$req.job], [QJob]::GetCurrentProcess(), [ref]$d, 0, $false, 2)) { $res.ok = $true; $res.handle = $d.ToInt64() }',
-    "              else { $res.error = 'DuplicateHandle failed' }",
+    "              else { $res.error = 'DuplicateHandle failed'; $res.code = w32code }",
     '            } finally { [QJob]::CloseHandle($sdk) | Out-Null }',
     '          }',
     '        }',
@@ -132,7 +133,7 @@ function buildHelperScript(): string {
     '        else {',
     "          $info = New-Object 'QJob+RateInfo'",
     '          if ([QJob]::QueryInformationJobObject($jobs[$req.job], 15, [ref]$info, 8, [IntPtr]::Zero)) { $res.ok = $true; $res.rate = $info.CpuRate }',
-    "          else { $res.error = 'QueryInformationJobObject failed' }",
+    "          else { $res.error = 'QueryInformationJobObject failed'; $res.code = w32code }",
     '        }',
     '      }',
     "      'close' {",
@@ -164,6 +165,8 @@ export interface QuotaJobResponse {
   rate?: number;
   handle?: number;
   error?: string;
+  /** Win32 error code captured right after the failing call, when available. */
+  code?: number;
 }
 
 // Environment handoff for the self-assign prefix: numeric job-handle value

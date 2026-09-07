@@ -1113,7 +1113,7 @@ export class NativeBackend implements BackendEngine {
       });
       if (!duped.ok || typeof duped.handle !== 'number') {
         throw new SandboxError(
-          `Failed to wire CPU quota job handle: ${duped.error ?? 'unknown'}`,
+          `Failed to wire CPU quota job handle: ${duped.error ?? 'unknown'}${duped.code !== undefined ? ` (win32 ${duped.code})` : ''}`,
           'EXEC_FAILED'
         );
       }
