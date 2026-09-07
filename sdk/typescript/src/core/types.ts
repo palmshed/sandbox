@@ -3,9 +3,9 @@ import { Readable, Writable } from 'stream';
 export type NetworkPolicy = 'disabled' | 'allow' | 'proxy';
 
 export interface ResourceLimits {
-  /** Number of CPU cores allocated (e.g. 1, 2, 0.5). Quota semantics; experimental for the native backend. */
+  /** Number of CPU cores allocated (e.g. 1, 2, 0.5). Shared hard rate-cap semantics with cpuQuota (RFC 0007); cpuQuota takes precedence when set. Throttles, never kills; enforcement reported via cpuQuotaLimits, false until per-backend implementation. */
   cpu?: number;
-  /** CPU core allocation quota (experimental, not yet enforced by native backend) */
+  /** CPU core allocation quota in cores, fractional allowed (RFC 0007 design accepted, not yet enforced). Takes precedence over cpu; values at or below zero mean unset. */
   cpuQuota?: number;
   /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend; enforced per process via RLIMIT_CPU (one-second granularity) by the docker backend. */
   cpuTimeLimit?: number;
@@ -18,9 +18,9 @@ export interface ResourceLimits {
 export interface SandboxOptions {
   /** Execution backend type. Defaults to 'native' if docker is unavailable */
   backend?: 'native' | 'docker' | string;
-  /** CPU cores count (quota semantics; experimental for the native backend) */
+  /** CPU cores count (shared hard rate-cap semantics with cpuQuota, RFC 0007; cpuQuota takes precedence when set). */
   cpu?: number;
-  /** CPU core allocation quota (experimental, not yet enforced by native backend) */
+  /** CPU core allocation quota in cores, fractional allowed (RFC 0007 design accepted, not yet enforced; values at or below zero mean unset). */
   cpuQuota?: number;
   /** CPU time budget in milliseconds (e.g. 2000). Enforced across the process group by the native backend; enforced per process via RLIMIT_CPU (one-second granularity) by the docker backend. */
   cpuTimeLimit?: number;
@@ -51,7 +51,7 @@ export interface ExecOptions {
   timeout?: number;
   /** CPU time budget for this execution (ms). Overrides sandbox-level cpuTimeLimit. Enforced across the process group by the native backend; enforced per process via RLIMIT_CPU (one-second granularity) by the docker backend. */
   cpuTimeLimit?: number;
-  /** CPU core allocation quota for this execution (experimental) */
+  /** CPU core allocation quota in cores for this execution (RFC 0007 design accepted, not yet enforced). Overrides the sandbox quota for this execution only. */
   cpuQuota?: number;
   /** Memory limit for this execution, e.g. "256MB" or bytes. Overrides sandbox-level memory option. */
   memory?: string | number;

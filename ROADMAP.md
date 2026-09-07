@@ -135,7 +135,7 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 > - **OS-level filesystem isolation** for the Native backend (Landlock confinement runner + runtime allowlist): **implemented, Linux-only for v1.0** (RFC 0006, issue `#3`); reported at runtime as `osFilesystemIsolation` (`supported` | `unsupported` | `unknown`). Linux + Landlock ABI >= 2 + unprivileged user namespaces report `supported` after a real confined self-test (validated: escape suite 15/15 + full SDK suite 59/59 on Ubuntu 24.04 kernel 6.8.0 ABI 4). macOS remains `unknown`: Seatbelt FS profile is a **post-v1.0 follow-up** (not promised); Windows reports `unsupported` (AppContainer per-path FS grants require package identity; restricted tokens cannot deny reads of world-readable files, so the RFC 0006 read-denial guarantee is not met; rationale recorded in RFC 0006)
 > - **Windows network isolation**: unsupported (RFC 0004; no unprivileged mechanism)
 > - **Docker resource/network enforcement**: deferred, capability flags remain `false` (issue `#4`)
-> - **Hard `cpuQuota`**: experimental, not enforced by the Native backend (kept for future hard-quota design)
+> - **Hard `cpuQuota`**: designed in RFC 0007 (throttle, never kill), specified under Unreleased target 1.2.0, reported via the `cpuQuotaLimits` capability (`false` everywhere until per-backend implementation promotes it)
 
 - [x] **CPU Hardening**: Infinite loops, runaway processes, strict timeout enforcement (CPU time budget enforced; hard core quota deferred post-v1.0)
 - [x] **Memory Hardening**: Large allocations, OOM handling, cleanup after process kill

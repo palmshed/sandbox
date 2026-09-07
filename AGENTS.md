@@ -110,7 +110,7 @@ Every execution backend reports supported features dynamically via `capabilities
 }
 ```
 
-`cpuLimits` reflects CPU **time** budget enforcement (Linux/macOS: supported via process-group sampling; Windows: best-effort PowerShell `Get-CimInstance` process-tree polling). The hard core quota (`cpuQuota`) is experimental and not enforced by the Native backend.
+`cpuLimits` reflects CPU **time** budget enforcement (Linux/macOS: supported via process-group sampling; Windows: best-effort PowerShell `Get-CimInstance` process-tree polling). The hard core quota (`cpuQuota`) is designed in RFC 0007 and reported separately via the `cpuQuotaLimits` boolean (throttle, never kill; `false` on every backend until per-backend implementation promotes it).
 
 `networkIsolation` is probed at `init()` time:
 - **Linux**: `true` if `unshare --user --map-root-user` succeeds (unprivileged user namespaces available); `false` on CI runners where user namespaces are restricted (falls back to proxy env vars)

@@ -17,6 +17,9 @@ test('TCK: Resources Module [Spec-Version: 1.0.0]', async (t) => {
   await t.test('Resource capability query', async () => {
     assert.equal(typeof engine.capabilities.cpuLimits, 'boolean');
     assert.equal(typeof engine.capabilities.memoryLimits, 'boolean');
+    // RFC 0007: hard quota flag exists (false everywhere until per-backend
+    // implementation promotes it); enforcement cases live in compliance.
+    assert.equal(typeof engine.capabilities.cpuQuotaLimits, 'boolean');
   });
 
   await t.test('Exec workloads writing past diskQuota are killed with ERR_DISK_QUOTA_EXCEEDED and the sandbox recovers [v0.1.2]', async () => {

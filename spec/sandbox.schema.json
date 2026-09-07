@@ -12,18 +12,18 @@
     },
     "cpu": {
       "type": "number",
-      "minimum": 0.1,
-      "description": "Number of CPU cores allocated (quota semantics). Enforced by containerized backends; experimental for the native backend."
+      "minimum": 0,
+      "description": "Number of CPU cores allocated (hard rate-cap semantics, shared with cpuQuota). Legacy name: backends honor cpuQuota when set and fall back to cpu otherwise; the two must not be applied differently. Values at or below zero mean unset; values above host capacity pass through and never bind."
     },
     "cpuQuota": {
       "type": "number",
-      "minimum": 0.1,
-      "description": "CPU core allocation quota (e.g. 0.5). Experimental: native backend does not yet enforce hard quota; requires cgroups v2 / Job Objects."
+      "minimum": 0,
+      "description": "CPU core allocation quota in cores, fractional allowed (e.g. 0.5). Hard rate cap: throttles the whole process tree, never kills (RFC 0007). Takes precedence over cpu. Values at or below zero mean unset; values above host capacity pass through and never bind. Composes orthogonally with cpuTimeLimit (throttled workloads still die by budget on CPU exhaustion). Enforcement reported via cpuQuotaLimits; macOS reports false."
     },
     "cpuTimeLimit": {
       "type": "integer",
       "minimum": 0,
-      "description": "CPU time budget in milliseconds (e.g. 2000). Supported boundary: enforced across the full process group by the native backend. Distinct from timeout (wall-clock)."
+      "description": "CPU time budget in milliseconds (e.g. 2000). Supported boundary: enforced across the full process group by the native backend. Distinct from timeout (wall-clock) and from cpuQuota (rate cap that throttles instead of killing)."
     },
     "memory": {
       "type": ["string", "number"],

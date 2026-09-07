@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased] (target 1.2.0)
+
+### Added (optional extension, design accepted per RFC 0007, not yet enforced)
+
+- `cpuQuotaLimits` capability in `capabilities.schema.json`: a boolean reporting whether the backend enforces hard CPU rate caps by throttling (never killing). `cpuLimits` keeps its settled CPU-time-budget meaning.
+- `cpu` / `cpuQuota` shared rate-cap semantics with `cpuQuota ?? cpu` precedence, unset/pass-through validation rules, and orthogonal composition with `cpuTimeLimit`, in `sandbox.schema.json` and `exec.schema.json` descriptions (fields themselves unchanged; `cpu`/`cpuQuota` minimum relaxed from 0.1 to 0 so zero validates as unset).
+
+---
+
 ## [1.1.0] - 2026-09-06
 
 ### Added (optional extension to the frozen 1.0.0 contract)

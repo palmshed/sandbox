@@ -41,6 +41,7 @@ export class DockerBackend implements BackendEngine {
     streaming: true,
     osFilesystemIsolation: 'unsupported', // RFC 0006: Docker backend does not apply Landlock confinement
     remoteExecution: false,
+    cpuQuotaLimits: false, // RFC 0007: hard rate caps not yet enforced; promote only after compliance tests pass
   };
   private containerId: string = '';
   private options!: SandboxOptions;

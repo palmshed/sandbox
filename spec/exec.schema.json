@@ -18,12 +18,12 @@
         "cpuTimeLimit": {
           "type": "integer",
           "minimum": 0,
-          "description": "CPU time budget in milliseconds for this execution. Overrides sandbox-level cpuTimeLimit. Enforced across the process group."
+          "description": "CPU time budget in milliseconds for this execution. Overrides sandbox-level cpuTimeLimit. Enforced across the process group. Distinct from cpuQuota (rate cap that throttles instead of killing)."
         },
         "cpuQuota": {
           "type": "number",
-          "minimum": 0.1,
-          "description": "CPU core allocation quota for this execution (experimental)."
+          "minimum": 0,
+          "description": "CPU core allocation quota in cores for this execution, fractional allowed. Overrides the sandbox quota for this execution only (RFC 0007). Hard rate cap: throttles, never kills. Values at or below zero mean unset. Enforcement reported via cpuQuotaLimits."
         },
         "workDir": {
           "type": "string",

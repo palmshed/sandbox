@@ -22,7 +22,11 @@
     },
     "cpuLimits": {
       "type": "boolean",
-      "description": "True if CPU limits can be enforced. Currently reflects CPU time budget enforcement (cpuTimeLimit); hard core quota (cpuQuota) is experimental and reported separately."
+      "description": "True if CPU limits can be enforced. Reflects CPU time budget enforcement (cpuTimeLimit) only; hard core quota (cpuQuota) is reported separately via cpuQuotaLimits and must not be conflated with this flag."
+    },
+    "cpuQuotaLimits": {
+      "type": "boolean",
+      "description": "RFC 0007: true if hard CPU rate caps (cpuQuota/cpu) are enforced by throttling (never killing). False means quotas are accepted but ignored (ambient scheduling)."
     },
     "memoryLimits": {
       "type": "boolean",
