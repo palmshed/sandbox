@@ -94,22 +94,28 @@ export function ownCgroupDir(): string | null {
  * Probe for a delegated parent by demonstrating a REAL live-PID move (not a
  * bogus-PID writability check: a nonexistent PID fails with ESRCH before the
  * kernel's migration permission checks, so it proves writability but never
- * provability of an actual move). Topology per candidate: a process-free
- * distributor child (holds the +cpu enablement, never any processes, so the
- * no-internal-process constraint stays satisfied) plus a test child under
- * it; spawn a throwaway sleeper, move its live PID into the test child,
- * then kill the sleeper and remove both directories. First candidate with a
- * successful live move wins. Cleans up after itself and never throws: null
- * means unavailable.
+ * provability of an actual move). Settles the topology first: the SDK host
+ * relocates itself into `<parent>/palmshed-self`, then `+cpu` is enabled in
+ * the parent (now member-free with respect to us, satisfying the
+ * no-internal-process constraint that enabling controllers in a
+ * member-holding cgroup would violate and after which moves into its
+ * children are refused), then a test child proves a live move. First
+ * candidate with a successful live move wins. Never throws: null means
+ * unavailable. Side effects on success are the intended setup (host stays
+ * relocated and unthrottled; empty dirs vanish with the scope); on failure
+ * the host is left where it is or relocated-but-unthrottled, both harmless.
  */
 export function probeCpuQuotaDelegation(): CgroupDelegation | null {
   for (const parent of candidateParents()) {
-    const distDir = path.join(parent, 'palmshed-probe-dist');
-    const testDir = path.join(distDir, `palmshed-probe-${process.pid}`);
+    const selfDir = path.join(parent, 'palmshed-self');
+    const testDir = path.join(parent, `palmshed-probe-${process.pid}`);
     let child: ReturnType<typeof spawn> | null = null;
     try {
-      fssync.mkdirSync(distDir, { recursive: true });
-      enableCpuController(distDir);
+      // Relocate ourselves first: moves below only work downward from here,
+      // and the parent must be member-free (of us) before it distributes.
+      fssync.mkdirSync(selfDir, { recursive: true });
+      fssync.writeFileSync(path.join(selfDir, 'cgroup.procs'), String(process.pid));
+      enableCpuController(parent);
       fssync.mkdirSync(testDir);
       try {
         fssync.writeFileSync(path.join(testDir, 'cpu.max'), unlimitedCpuMax());
@@ -141,19 +147,6 @@ export function probeCpuQuotaDelegation(): CgroupDelegation | null {
     }
   }
   return null;
-}
-
-/**
- * Ensure the process-free distributor directory under a delegated parent
- * (created idempotently, shared across sandboxes of this host process tree;
- * never receives member processes) with cpu enabled downward. Returns its
- * path. Throws on failure.
- */
-export function ensureDistributor(parentDir: string): string {
-  const distDir = path.join(parentDir, 'palmshed-dist');
-  fssync.mkdirSync(distDir, { recursive: true });
-  enableCpuController(distDir);
-  return distDir;
 }
 
 /** Create a per-sandbox cgroup; throws on failure (caller decides honesty). */
