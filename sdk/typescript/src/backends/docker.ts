@@ -15,24 +15,20 @@ export class DockerBackend implements BackendEngine {
   public readonly name = 'docker';
   // Capability negotiation principle: a capability MUST NOT be `true` unless
   // backed by implementation AND integration-test coverage. Backend-parity
-  // work item #4 delivered all three gaps, so the flags are promoted:
-  //   cpuLimits: cpuTimeLimit enforced per execution via RLIMIT_CPU
-  //     (`ulimit -t`, second granularity, per-process inheritance) with
-  //     ERR_CPU_EXCEEDED on breach.
-  //   memoryLimits: per-execution memory overrides applied container-wide via
-  //     `docker update --memory/--memory-swap` (serialized update, exec,
-  //     restore dance) with OOMKilled-transition attribution and
-  //     ERR_OOM_EXCEEDED on breach.
-  //   networkIsolation: `disabled` maps to `--network none` (proven by the
-  //     hermetic only-lo-interface test); `allow` is the explicit default
-  //     bridge; `proxy` adds host proxy env passthrough at container create.
+  // work item #4 delivered cpuLimits, memoryLimits, and networkIsolation.
+  // RFC 0007 hard quota adds: `cpuQuota ?? cpu` maps to `--cpus` at create
+  // (per-exec overrides via a serialized `docker update --cpus` dance with
+  // restore), and `cpuQuotaLimits` promotes only when the daemon API
+  // supports container updates (verified at init, never assumed).
   // Documented residuals: RLIMIT_CPU is per-process (a forkbomb gets the
   // budget per process, unlike the native process-group accounting) with
   // one-second granularity; concurrent execs with different per-exec memory
   // limits serialize on the container-wide setting; OOM attribution falls
   // back to exit-code 137 once a container has OOMed before (stale flag);
   // clearing a limit materializes unlimited as 1TiB (daemon validation
-  // rejects the 0/-1 spellings on update).
+  // rejects the 0/-1 spellings on update); unlimited CPU materializes as
+  // 1024 cores for the same reason; override dances share one mutex across
+  // memory and CPU updates.
   public readonly capabilities: BackendCapabilities = {
     filesystem: true,
     networkIsolation: true,
@@ -41,17 +37,20 @@ export class DockerBackend implements BackendEngine {
     streaming: true,
     osFilesystemIsolation: 'unsupported', // RFC 0006: Docker backend does not apply Landlock confinement
     remoteExecution: false,
-    cpuQuotaLimits: false, // RFC 0007: hard rate caps not yet enforced; promote only after compliance tests pass
+    cpuQuotaLimits: false, // RFC 0007: promoted at init only when the daemon supports updates
   };
   private containerId: string = '';
   private options!: SandboxOptions;
-  // Serializes the memory update, exec, restore dance so concurrent execs
-  // with different per-exec memory limits cannot interleave container-wide
-  // `docker update` calls (last write would otherwise win for both).
-  private memoryUpdateChain: Promise<void> = Promise.resolve();
+  // Serializes resource update, exec, restore dances (memory and CPU share
+  // it: concurrent `docker update` calls with disjoint flags could otherwise
+  // interleave read-modify-write cycles and lose each other's settings).
+  private resourceUpdateChain: Promise<void> = Promise.resolve();
   // Container-wide memory limit currently applied (bytes), mirrored from
   // create/update calls so per-exec overrides know when an update is needed.
   private appliedMemoryBytes: number | null = null;
+  // Container-wide CPU quota currently applied (cores), mirrored the same
+  // way. Precedence at create and per exec: cpuQuota ?? cpu.
+  private appliedCpuQuota: number | null = null;
 
   /**
    * Reject paths that escape the container VFS workspace or would break out of
@@ -72,6 +71,31 @@ export class DockerBackend implements BackendEngine {
       throw new SandboxError('Path traversal attempt outside container workspace', 'FS_ERROR');
     }
     return normalized;
+  }
+
+  /** Quota precedence shared by create and exec: cpuQuota ?? cpu, unset unless a positive number. */
+  private static resolveCpuQuotaCores(cpuQuota?: number, cpu?: number): number | null {
+    const raw = cpuQuota ?? cpu;
+    return typeof raw === 'number' && raw > 0 ? raw : null;
+  }
+
+  /**
+   * True when the daemon API supports `docker update --cpus` (API 1.29+).
+   * Never throws: unparseable versions and unreachable daemons report false.
+   */
+  private async probeUpdateApiSupport(): Promise<boolean> {
+    try {
+      const res = await this.runDockerCmd(['version', '--format', '{{.Server.APIVersion}}']);
+      if (res.exitCode !== 0) return false;
+      const parts = res.stdout.trim().split('.');
+      if (parts.length < 2) return false;
+      const major = parseInt(parts[0], 10);
+      const minor = parseInt(parts[1], 10);
+      if (!Number.isFinite(major) || !Number.isFinite(minor)) return false;
+      return major > 1 || (major === 1 && minor >= 29);
+    } catch {
+      return false;
+    }
   }
 
   /** Single-quote a string for safe interpolation into an `sh -c` command. */
@@ -106,9 +130,15 @@ export class DockerBackend implements BackendEngine {
       }
     }
 
-    // Resource limits mapping
-    if (options.cpu) {
-      args.push(`--cpus=${options.cpu}`);
+    // Resource limits mapping. CPU quota precedence (RFC 0007): cpuQuota ??
+    // cpu. Non-positive values mean unset (mirrors cpuTimeLimit handling);
+    // above-capacity values pass through and never bind.
+    const sandboxQuota = DockerBackend.resolveCpuQuotaCores(options.cpuQuota, options.cpu);
+    if (sandboxQuota !== null) {
+      args.push(`--cpus=${sandboxQuota}`);
+      this.appliedCpuQuota = sandboxQuota;
+    } else {
+      this.appliedCpuQuota = null;
     }
     if (options.memory) {
       const memStr = typeof options.memory === 'number' ? `${options.memory}` : options.memory;
@@ -135,6 +165,18 @@ export class DockerBackend implements BackendEngine {
       throw new SandboxError(`Failed to start Docker container: ${result.stderr}`, 'INVALID_BACKEND');
     }
     this.containerId = result.stdout.trim();
+    // RFC 0007: promote cpuQuotaLimits only when the daemon actually
+    // supports container updates (`docker update --cpus` needs API 1.29+).
+    // Version-gated, never assumed; failure leaves the flag false and the
+    // container fully usable for everything else.
+    if (await this.probeUpdateApiSupport()) {
+      this.capabilities.cpuQuotaLimits = true;
+    } else {
+      logDebug('cpuquota.unavailable', {
+        backend: this.name,
+        reason: 'daemon API predates container updates',
+      });
+    }
     logDebug('backend.init', {
       backend: this.name,
       containerId: this.containerId,
@@ -177,29 +219,46 @@ export class DockerBackend implements BackendEngine {
           )
         : null;
 
-    // Fast path: the container already enforces the wanted limit (or no
-    // limit is wanted and none is applied). No `docker update` needed. The
+    // CPU quota (cores): an explicit per-execution value (even 0/NaN, which
+    // resolve to null) replaces the sandbox default for this execution;
+    // absent means the default. Mirrors the native precedence and Q6.
+    const sandboxQuotaDefault = DockerBackend.resolveCpuQuotaCores(
+      this.options.cpuQuota,
+      this.options.cpu
+    );
+    const execQuota =
+      options.cpuQuota !== undefined
+        ? DockerBackend.resolveCpuQuotaCores(options.cpuQuota, undefined)
+        : sandboxQuotaDefault;
+
+    // Fast path: the container already enforces both wanted settings (or no
+    // limits are wanted and none are applied). No `docker update` needed. The
     // OOM snapshot is only read when a limit is active (avoids an extra
     // inspect call on every unenforced execution).
-    if (memLimitBytes === this.appliedMemoryBytes) {
+    const needsMemoryDance = memLimitBytes !== this.appliedMemoryBytes;
+    const needsCpuDance = execQuota !== this.appliedCpuQuota;
+    if (!needsMemoryDance && !needsCpuDance) {
       const oomBefore = memLimitBytes !== null ? await this.readOomKilled() : false;
       return this.execWithBudget(command, options, cpuTimeLimitMs, rawCpuTimeLimit ?? null, rawMemoryLimit ?? null, memLimitBytes, oomBefore);
     }
 
-    // Slow path: apply the per-exec target container-wide, run, then restore
-    // the sandbox default. Serialized on a chain so concurrent execs with
-    // different per-exec limits cannot interleave updates (last write would
-    // otherwise win for both executions).
-    const previous = this.memoryUpdateChain;
+    // Slow path: apply the per-exec targets container-wide, run, then
+    // restore the sandbox defaults. Serialized on the shared chain so
+    // concurrent execs with different per-exec limits cannot interleave
+    // container-wide `docker update` calls (last write would otherwise win
+    // for both executions, and disjoint memory/CPU updates could clobber
+    // each other read-modify-write style).
+    const previous = this.resourceUpdateChain;
     let release!: () => void;
     const current = new Promise<void>((resolve) => {
       release = resolve;
     });
-    this.memoryUpdateChain = current;
+    this.resourceUpdateChain = current;
     await previous;
     try {
       const oomBefore = await this.readOomKilled();
-      await this.applyContainerMemory(memLimitBytes);
+      if (needsMemoryDance) await this.applyContainerMemory(memLimitBytes);
+      if (needsCpuDance) await this.applyContainerCpus(execQuota);
       try {
         return await this.execWithBudget(
           command,
@@ -212,11 +271,12 @@ export class DockerBackend implements BackendEngine {
         );
       } finally {
         try {
-          await this.applyContainerMemory(sandboxDefaultBytes);
+          if (needsCpuDance) await this.applyContainerCpus(sandboxQuotaDefault);
+          if (needsMemoryDance) await this.applyContainerMemory(sandboxDefaultBytes);
         } catch (err) {
           // Never mask the execution result with a restore failure. The
-          // mirror keeps the stale value, so the next dance retries the
-          // restore instead of running under a wrong limit silently.
+          // mirrors keep stale values, so the next dance retries the
+          // restore instead of running under wrong limits silently.
           logDebug('resource.restoreFailed', {
             backend: this.name,
             error: err instanceof Error ? err.message : String(err),
@@ -343,6 +403,29 @@ export class DockerBackend implements BackendEngine {
       );
     }
     this.appliedMemoryBytes = targetBytes;
+  }
+
+  /**
+   * Apply a container-wide CPU quota in cores (null clears it). Mirror
+   * updated only on success. Clearing materializes unlimited as 1024 cores:
+   * `--cpus=0` semantics are uncertain across daemons (the same class of
+   * validation trouble as memory 0/-1), while an explicit huge value always
+   * validates and never binds a real workload. The mirror still records null
+   * (conceptually unlimited), which stays consistent because every override
+   * apply re-pins the value explicitly.
+   */
+  private async applyContainerCpus(targetCores: number | null): Promise<void> {
+    if (targetCores === this.appliedCpuQuota) return;
+    const UNLIMITED_CPUS = 1024;
+    const effective = targetCores === null ? UNLIMITED_CPUS : targetCores;
+    const res = await this.runDockerCmd(['update', `--cpus=${effective}`, this.containerId]);
+    if (res.exitCode !== 0) {
+      throw new SandboxError(
+        `Failed to apply container CPU quota: ${res.stderr.trim()}`,
+        'EXEC_FAILED'
+      );
+    }
+    this.appliedCpuQuota = targetCores;
   }
 
   /** Read the container OOMKilled flag (false when unreadable; exec then fails honestly). */

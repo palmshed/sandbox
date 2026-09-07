@@ -361,5 +361,81 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
         await plain.destroy();
       }
     });
+
+    await t.test('rate readback via the workload cgroup', async () => {
+      const cg = await sandbox.exec('cat /proc/self/cgroup');
+      await cg.wait();
+      assert.equal(cg.status(), 'completed');
+      const line = cg
+        .stdout()
+        .trim()
+        .split('\n')
+        .find((l) => l.startsWith('0::'));
+      assert.ok(line, `cgroup v2 entry present, got: ${cg.stdout().trim()}`);
+      const rel = line.slice(3) || '/';
+      // Same container cgroupfs view: the --cpus=0.5 limit materializes as a
+      // 50000us quota over the 100000us period. A cgroup v1 host reports the
+      // quota and period files instead.
+      let quotaText = null;
+      try {
+        const read = await sandbox.exec(`cat /sys/fs/cgroup${rel}/cpu.max`);
+        await read.wait();
+        if (read.status() === 'completed') quotaText = read.stdout().trim();
+      } catch {
+        // fall through to the v1 paths below
+      }
+      if (quotaText === null) {
+        const quota = await sandbox.exec(`cat /sys/fs/cgroup/cpu/docker/*/cpu.cfs_quota_us`);
+        await quota.wait();
+        const period = await sandbox.exec(`cat /sys/fs/cgroup/cpu/docker/*/cpu.cfs_period_us`);
+        await period.wait();
+        assert.equal(quota.status(), 'completed');
+        assert.equal(period.status(), 'completed');
+        quotaText = `${quota.stdout().trim()} ${period.stdout().trim()}`;
+      }
+      assert.ok(
+        quotaText.startsWith('50000 '),
+        `quota 0.5 applied, got: ${quotaText}`
+      );
+    });
+
+    await t.test('descendant processes inherit the cap', async (t) => {
+      if (process.platform === 'win32') {
+        return t.skip('POSIX shell syntax only; container cgroups cover every exec anyway');
+      }
+      const control = await Sandbox.create({ backend: 'docker', osFilesystemIsolation: false, timeout: 90000 });
+      try {
+        const controlWall = await burnCpu(control, ITER_BURN);
+        const throttledWall = await burnCpu(sandbox, `${ITER_BURN} & wait $!`);
+        assert.ok(
+          throttledWall >= 1.5 * controlWall,
+          `background child stays throttled (throttled ${throttledWall}ms vs control ${controlWall}ms)`
+        );
+      } finally {
+        await control.destroy();
+      }
+    });
+
+    await t.test('quota plus budget still dies by budget', async () => {
+      const { SandboxResourceError } = await import('../../sdk/typescript/dist/index.js');
+      await assert.rejects(
+        (async () => {
+          const execution = await sandbox.exec(`node -e "while(true){}"`, {
+            cpuTimeLimit: 2000,
+            timeout: 90000,
+          });
+          await execution.wait();
+        })(),
+        (err) => err instanceof SandboxResourceError && err.code === 'ERR_CPU_EXCEEDED'
+      );
+    });
+
+    await t.test('non-positive quotas mean unset', async () => {
+      for (const quota of [0, -1, NaN]) {
+        const execution = await sandbox.exec(ITER_BURN, { cpuQuota: quota });
+        await execution.wait();
+        assert.equal(execution.status(), 'completed', `quota ${String(quota)} runs unenforced`);
+      }
+    });
   });
 });
