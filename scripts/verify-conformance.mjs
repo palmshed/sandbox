@@ -31,7 +31,12 @@ function main() {
   // Expanded in-process: the test runner only expands globs on Node 21+, but
   // CI pins Node 20 where bash/cmd globbing is unavailable on Windows.
   const files = expandGlob(PATTERNS);
-  const res = run('node', ['--test', ...files], { cwd: REPO_ROOT, timeoutMs: 600000 });
+  // Windows runners are CPU-constrained and timing-sensitive enforcement
+  // suites (quota throttling ratios, CIM-polled resource kills) flake when
+  // test files burn CPU in parallel; serialize files there like the SDK
+  // suite already does with the same flag. Other platforms keep parallel.
+  const concurrencyArgs = process.platform === 'win32' ? ['--test-concurrency=1'] : [];
+  const res = run('node', ['--test', ...concurrencyArgs, ...files], { cwd: REPO_ROOT, timeoutMs: 900000 });
   const counts = nodeTestCounts(res.stdout + '\n' + res.stderr);
   const summary = counts && counts.tests != null ? `${counts.pass}/${counts.tests} tests` : 'no test summary';
   const ok = res.ok && counts?.fail === 0;
