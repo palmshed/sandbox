@@ -259,11 +259,15 @@ test('RFC 0007 CPU hard quota compliance (Q1-Q6)', async (t) => {
     });
 
     await t.test('child tree stays in the job', async () => {
-      const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 90000 });
+      const control = await Sandbox.create({ backend: 'native', osFilesystemIsolation: false, timeout: 120000 });
       try {
-        const controlWall = await burnCpu(control, ITER_BURN);
+        // Control matches the tree's doubled work: two sequential burns.
+        const controlWall = (await burnCpu(control, ITER_BURN)) + (await burnCpu(control, ITER_BURN));
+        // Double iterations for the tree: at ~1s the throttle signal sits
+        // inside scheduler quantization noise (measured 1.43x vs the 1.5
+        // floor); ~2s of throttled work separates cleanly.
         const execution = await sandbox.exec(
-          `node -e "const {spawnSync}=require('child_process');spawnSync(process.execPath,['-e','const t0=Date.now();let x=0;for(let i=0;i<100000000;i++){x+=Math.sqrt(x+1);}console.log(\\'innerwall=\\'+(Date.now()-t0))'],{stdio:'inherit'});console.log('tree burned');"`
+          `node -e "const {spawnSync}=require('child_process');spawnSync(process.execPath,['-e','const t0=Date.now();let x=0;for(let i=0;i<200000000;i++){x+=Math.sqrt(x+1);}console.log(\\'innerwall=\\'+(Date.now()-t0))'],{stdio:'inherit'});console.log('tree burned');"`
         );
         await execution.wait();
         assert.equal(execution.status(), 'completed');
