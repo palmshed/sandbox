@@ -243,7 +243,7 @@ export class NativeBackend implements BackendEngine {
     // host-side move applies (documented residual for fast-forking confined
     // workloads). Linux cgroup path only; everywhere else this is a no-op.
     let effectiveCommand = command;
-    if (this.cpuCgroupPath !== null && !isWin && process.platform === 'linux') {
+    if (this.cpuCgroupPath !== null && process.platform === 'linux') {
       env.PALMSHED_CPU_CGROUP = this.cpuCgroupPath;
       effectiveCommand = 'echo $$ > "$PALMSHED_CPU_CGROUP/cgroup.procs" 2>/dev/null; ' + command;
     }
