@@ -22,12 +22,12 @@
 - **SDK Release Version**: `v1.2.0` (Phase 2 complete plus the optional RFC 0006 OS filesystem isolation extension and the optional RFC 0007 CPU hard quota extension)
 - **Runtime Specification**: `1.2.0` (the 1.0.0 contract stays frozen; 1.1.0 and 1.2.0 add only optional extensions; see [`spec/version.md`](spec/version.md))
 - **Stability**: **Stable**. The runtime contract is frozen at v1.0.0 with 1.1.0 and 1.2.0 adding only optional extensions. API contracts follow Semantic Versioning rules outlined in [`spec/compatibility.md`](spec/compatibility.md) and changes are gated by the 6-month deprecation policy ([`spec/deprecations.md`](spec/deprecations.md)).
-- **Network isolation note**: On macOS, `networkIsolation` is `true` (5/5 adversarial leak tests pass). On Linux, it is dynamically probed at `init()`: `true` when unprivileged user namespaces are available, `false` on CI runners where they are restricted (falls back to proxy env vars). On Windows it is `false` (no native unprivileged network isolation; see RFC 0004). The Docker backend reports `networkIsolation`, `cpuLimits`, and `memoryLimits` as `false` until its enforcement is implemented and integration-tested (work item `#4`).
+- **Network isolation note**: On macOS, `networkIsolation` is `true` (5/5 adversarial leak tests pass). On Linux, it is dynamically probed at `init()`: `true` when unprivileged user namespaces are available, `false` on CI runners where they are restricted (falls back to proxy env vars). On Windows it is `false` (no native unprivileged network isolation; see RFC 0004). The Docker backend maps `disabled`/`allow`/`proxy` policies since backend-parity work item `#4`.
 - **v1.0 security guarantee**: **Native v1.0 provides soft process isolation with a hardened virtual filesystem boundary.** OS-level filesystem isolation for executed workloads ships in v1.1.0 as an **optional, capability-reported extension** (`osFilesystemIsolation`; RFC 0006). Platform status:
   - **OS-level filesystem isolation** (RFC 0006): implemented for Linux (Landlock + `unshare --user`, runtime-allowlist confinement); reported `supported` only after a real confined self-test. macOS is `unknown` (Seatbelt FS profile deferred post-v1.0); Windows is `unsupported`
   - **Windows network isolation**: unsupported (no native unprivileged mechanism; RFC 0004)
-  - **Docker resource/network enforcement**: experimental / deferred; capability flags remain `false` (work item `#4`)
-  - **`cpuQuota`**: experimental, not enforced by the Native backend (`cpuTimeLimit` time budgets are enforced)
+  - **Docker resource/network enforcement**: enforced since backend-parity work item `#4` (`cpuLimits`, `memoryLimits`, `networkIsolation` all `true` with integration coverage)
+  - **`cpuQuota`**: hard rate cap that throttles instead of killing, shipped in v1.2.0 (RFC 0007); enforced on Linux, Windows, and Docker where each platform's probe passes, macOS reports `false` (`cpuTimeLimit` time budgets are enforced everywhere `cpuLimits` is `true`)
 
 ---
 
