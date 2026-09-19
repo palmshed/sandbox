@@ -47,7 +47,11 @@ jobs:
     if: github.event_name == 'schedule' && github.event.schedule == '0 3 * * *'
     runs-on: ubuntu-latest
     steps:
+      # fetch-tags: the gate asserts a matching version tag exists, and the
+      # default checkout fetches no tags at all.
       - uses: actions/checkout@v5
+        with:
+          fetch-tags: true
       - uses: actions/setup-node@v5
         with:
           node-version: '20'
