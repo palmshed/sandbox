@@ -215,6 +215,11 @@ test('Crash Recovery (RFC 0005)', async (t) => {
     }
   });
 
+  // Skipped on Windows by design (not a coverage gap): the fixture is a
+  // nested POSIX background chain (`sh -c '...' & wait' & echo $!`) that has
+  // no Windows equivalent (no sh, no `&`/`wait`/`$!`, no POSIX signals).
+  // Windows escape coverage comes from the platform branch of the fixture
+  // plus tree-kill reaping, which has dedicated diagnostics on CI.
   await t.test('G3: backgrounded/nohup workload cannot escape reaping', { skip: isWin }, async () => {
     const { child, state } = await spawnHost('nohup');
     hosts.push(child);

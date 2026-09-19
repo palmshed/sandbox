@@ -12,6 +12,21 @@ import {
 } from '../core/types.js';
 import { logDebug } from '../core/log.js';
 
+/**
+ * True when CLI stderr shows the Docker daemon itself is unreachable (as
+ * opposed to a workload or command failure inside a reachable daemon).
+ * Scoped to daemon-specific strings only: a bare "connection refused" is
+ * deliberately NOT matched, since workloads connecting to closed ports
+ * print that routinely.
+ */
+export function isDaemonConnectionError(stderr: string): boolean {
+  const text = stderr.toLowerCase();
+  return (
+    text.includes('cannot connect to the docker daemon') ||
+    text.includes('is the docker daemon running')
+  );
+}
+
 export class DockerBackend implements BackendEngine {
   public readonly name = 'docker';
   // Capability negotiation principle: a capability MUST NOT be `true` unless
@@ -103,6 +118,20 @@ export class DockerBackend implements BackendEngine {
   /** Single-quote a string for safe interpolation into an `sh -c` command. */
   private static shellQuote(s: string): string {
     return `'${s.replace(/'/g, `'\\''`)}'`;
+  }
+
+  /**
+   * Throw INVALID_BACKEND when CLI stderr shows daemon loss. Keeps one
+   * stable code for disconnects across exec and VFS paths instead of
+   * misreporting them as workload or filesystem failures.
+   */
+  private static throwIfDaemonLost(stderr: string): void {
+    if (isDaemonConnectionError(stderr)) {
+      throw new SandboxError(
+        `Docker daemon unreachable: ${stderr.trim().split('\n')[0]}`,
+        'INVALID_BACKEND'
+      );
+    }
   }
 
   async init(options: SandboxOptions): Promise<void> {
@@ -331,6 +360,15 @@ export class DockerBackend implements BackendEngine {
     const result = await this.runDockerCmd(args, options);
     if (result.timedOut) return result;
 
+    // Daemon loss surfaces as INVALID_BACKEND, not as a workload outcome:
+    // a dead daemon makes the CLI fail with connection text while the exit
+    // code alone (usually 1) is indistinguishable from a workload failure.
+    // Checked before resource attribution so a lost daemon is never
+    // misreported as OOM or CPU exhaustion.
+    if (result.exitCode !== 0) {
+      DockerBackend.throwIfDaemonLost(result.stderr);
+    }
+
     // OOM attribution first: the OOMKilled transition is kernel-certain.
     if (memLimitBytes !== null && result.exitCode !== 0) {
       const oomed = await this.checkOomTransition(oomBefore);
@@ -499,6 +537,7 @@ export class DockerBackend implements BackendEngine {
     const target = DockerBackend.assertSafeContainerPath(filePath);
     const res = await this.runDockerCmd(['exec', this.containerId, 'cat', target]);
     if (res.exitCode !== 0) {
+      DockerBackend.throwIfDaemonLost(res.stderr);
       throw new SandboxError(`Failed to read file in container: ${res.stderr}`, 'FS_ERROR');
     }
     return Buffer.from(res.stdout);
@@ -515,6 +554,7 @@ export class DockerBackend implements BackendEngine {
 
     const res = await this.runDockerCmd(['exec', this.containerId, 'sh', '-c', cmd]);
     if (res.exitCode !== 0) {
+      DockerBackend.throwIfDaemonLost(res.stderr);
       throw new SandboxError(`Failed to write file in container: ${res.stderr}`, 'FS_ERROR');
     }
   }
@@ -523,6 +563,7 @@ export class DockerBackend implements BackendEngine {
     const target = DockerBackend.assertSafeContainerPath(sandboxPath);
     const res = await this.runDockerCmd(['cp', localPath, `${this.containerId}:${target}`]);
     if (res.exitCode !== 0) {
+      DockerBackend.throwIfDaemonLost(res.stderr);
       throw new SandboxError(`Failed to upload file to container: ${res.stderr}`, 'FS_ERROR');
     }
   }
@@ -531,6 +572,7 @@ export class DockerBackend implements BackendEngine {
     const source = DockerBackend.assertSafeContainerPath(sandboxPath);
     const res = await this.runDockerCmd(['cp', `${this.containerId}:${source}`, localPath]);
     if (res.exitCode !== 0) {
+      DockerBackend.throwIfDaemonLost(res.stderr);
       throw new SandboxError(`Failed to download file from container: ${res.stderr}`, 'FS_ERROR');
     }
   }

@@ -417,8 +417,8 @@ disconnection (RFC 0005). Two mechanisms work together:
   quarantined.
 * Windows has no POSIX process groups; reaping uses `taskkill /T /F` tree kill
   and the start-time token is best-effort.
-* The registry metadata is not tamper-proof: the Native backend has no
-  OS-level filesystem isolation yet (issue `#3`), so a hostile workload sharing
+* The registry metadata is not tamper-proof: where the Native backend reports
+  `osFilesystemIsolation` as `unknown` or `unsupported`, a hostile workload sharing
   the host account could in principle interfere with recovery bookkeeping. This
   is a documented consequence of running without OS isolation, not a recovery
   guarantee.
@@ -430,7 +430,7 @@ disconnection (RFC 0005). Two mechanisms work together:
 * `cancel()` sends `SIGTERM` to the process group (then `SIGKILL` after 1s).
 * CPU **time** limit (`cpuTimeLimit`) is enforced by the Native backend; the hard core quota (`cpuQuota`) is designed in RFC 0007 and reported via `cpuQuotaLimits` (Linux and Windows true where their probes pass; Docker true where the daemon supports updates; macOS false.)
 * CPU and memory enforcement on Windows is best-effort (PowerShell `Get-CimInstance` process-tree polling); a child that detaches from the process tree can escape accounting. Linux/macOS sample the full process group.
-* OS-level filesystem isolation (chroot, mount restrictions) is not yet active; the native backend provides soft process isolation with a hardened virtual filesystem boundary.
-* Docker backend claims `filesystem`, `streaming`, `cpuLimits`, `memoryLimits`, and `networkIsolation` since backend-parity work item `#4`: CPU time budgets are enforced per execution via RLIMIT_CPU (ERR_CPU_EXCEEDED; one-second per-process granularity), per-execution memory overrides via container-wide `docker update` (ERR_OOM_EXCEEDED; updates serialize, OOM flag can go stale), and `disabled`/`allow`/`proxy` network policies are all mapped. Verify `sandbox.capabilities` before relying on Docker resource/network guarantees.
+* OS-level filesystem isolation is enforced on Linux via Landlock (`osFilesystemIsolation: 'supported'` after the init probe passes; RFC 0006). macOS reports `unknown`, Windows and others `unsupported`; there the native backend provides soft process isolation with a hardened virtual filesystem boundary.
+* Docker backend claims `filesystem`, `streaming`, `cpuLimits`, `memoryLimits`, and `networkIsolation` since backend-parity work item `#4`: CPU time budgets are enforced per execution via RLIMIT_CPU (ERR_CPU_EXCEEDED; one-second per-process granularity), per-execution memory overrides via container-wide `docker update` (ERR_OOM_EXCEEDED; updates serialize, OOM flag can go stale), and `disabled`/`allow`/`proxy` network policies are all mapped. Daemon loss surfaces as `INVALID_BACKEND` (never as a workload or filesystem failure); containers run with `--rm` so normal stop/destroy paths leave no residue. Verify `sandbox.capabilities` before relying on Docker resource/network guarantees.
 
 These are tracked in the [`v1.0.0` milestone](https://github.com/palmshed/sandbox/milestone/1).
