@@ -81,6 +81,9 @@ sandbox/
 │   ├── consumer-test/     # Isolated consumer integration test (shared verify.ts suite)
 │   │   ├── run.sh         # Reproducible: build + pack + install + test (packed provenance)
 │   │   └── run-published.sh # npm provenance: registry tarball into a temp consumer project
+│   ├── quota-aware-evaluator/ # Consumer example: evaluate submissions under cpuQuota (published package)
+│   │   ├── package.json   # Depends on @palmshed/sandbox from the npm registry
+│   │   └── evaluate.mjs   # Capability discovery, capped submissions, override demo
 │   └── README.md          # Usage examples overview
 ├── production/            # Production Validation Suite (packed-artifact end-to-end gates)
 │   ├── run.mjs            # Scenario runner (--list / --only / --verbose, residue checks)

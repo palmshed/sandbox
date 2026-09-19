@@ -1,0 +1,16 @@
+{
+  "name": "quota-aware-evaluator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Example consumer: evaluate untrusted submissions under a CPU quota using the published @palmshed/sandbox package",
+  "type": "module",
+  "scripts": {
+    "start": "node evaluate.mjs"
+  },
+  "dependencies": {
+    "@palmshed/sandbox": "^1.2.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
