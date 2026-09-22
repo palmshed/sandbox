@@ -375,6 +375,9 @@ export function recordSandboxPgid(sandboxDir: string, pgid: number): void {
   const write = previous.then(async () => {
     const entry = await readEntry(sandboxDir);
     if (!entry || entry.hostPid !== process.pid) return;
+    // A malformed registry entry (disk corruption or same-user tampering)
+    // must not break exec: normalize instead of throwing.
+    if (!Array.isArray(entry.pgids)) entry.pgids = [];
     if (!entry.pgids.includes(pgid)) {
       entry.pgids.push(pgid);
       if (entry.pgids.length > MAX_PGIDS) entry.pgids.splice(0, entry.pgids.length - MAX_PGIDS);
@@ -420,26 +423,39 @@ export async function reapStaleSandboxes(skipDir?: string): Promise<number> {
     if (!entry || typeof entry !== 'object' || typeof entry.dir !== 'string') continue;
     if (entry.dir === skipDir) continue;
 
-    const hostPid = Number(entry.hostPid);
-    const alive = Number.isInteger(hostPid) && pidAlive(hostPid);
-    let tokenOk = false;
-    if (alive && typeof entry.hostStart === 'string') {
-      const current = readHostStartToken(hostPid);
-      // When the token cannot be read, treat the sandbox as live: bias toward
-      // never reaping a live sandbox (G4) over reaping a stale one (G2).
-      tokenOk = current === null || current === entry.hostStart;
-    }
-    if (alive && tokenOk) continue;
+    // A malformed entry must never abort the whole sweep (the reaper runs
+    // inside Sandbox.create, so one bad file would otherwise break every
+    // future init). Normalize and isolate per entry instead.
+    try {
+      if (!Array.isArray(entry.pgids)) entry.pgids = [];
 
-    for (const pgid of entry.pgids) {
-      if (Number.isInteger(pgid)) killWorkloadRoot(pgid);
+      const hostPid = Number(entry.hostPid);
+      const alive = Number.isInteger(hostPid) && pidAlive(hostPid);
+      let tokenOk = false;
+      if (alive && typeof entry.hostStart === 'string') {
+        const current = readHostStartToken(hostPid);
+        // When the token cannot be read, treat the sandbox as live: bias toward
+        // never reaping a live sandbox (G4) over reaping a stale one (G2).
+        tokenOk = current === null || current === entry.hostStart;
+      }
+      if (alive && tokenOk) continue;
+
+      for (const pgid of entry.pgids) {
+        if (Number.isInteger(pgid)) killWorkloadRoot(pgid);
+      }
+      if (process.platform === 'win32') {
+        windowsKillProcessTree(entry.pgids);
+      }
+      await removeSandboxDir(entry.dir);
+      await removeEntry(entry.dir);
+      reaped++;
+    } catch (err) {
+      logDebug('recovery.reap.entryFailed', {
+        entry: entryPathFile,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
     }
-    if (process.platform === 'win32') {
-      windowsKillProcessTree(entry.pgids);
-    }
-    await removeSandboxDir(entry.dir);
-    await removeEntry(entry.dir);
-    reaped++;
   }
 
   // Fallback GC: sandbox dirs without a registry entry, only when older than

@@ -322,4 +322,47 @@ test('Crash Recovery (RFC 0005)', async (t) => {
       await fresh.destroy();
     }
   });
+
+  await t.test('G7: malformed registry entry cannot break reaping or exec', async () => {
+    const marker = `marker-g7-${process.pid}.txt`;
+    const sandbox = await Sandbox.create({ backend: 'native', timeout: 5000 });
+    await sandbox.writeFile(marker, 'x');
+    const dir = findSandboxDirWithMarker(marker);
+    try {
+      assert.ok(dir);
+      // Forge every malformed pgids shape: the sweep must survive each one,
+      // exec on the live sandbox must keep working, and the record path must
+      // heal the entry back to a real array (without the fix, the TypeError
+      // is swallowed by the write chain and the pgid is silently never
+      // recorded).
+      for (const bad of [123, 'pgids', null]) {
+        const entry = (await readEntry(dir))!;
+        entry['pgids'] = bad;
+        await fs.writeFile(entryFileFor(dir), JSON.stringify(entry));
+        await assert.doesNotReject(reapStaleSandboxes());
+        const probe = await sandbox.exec('echo still-alive');
+        await probe.wait();
+        assert.equal(probe.status(), 'completed');
+        // Allow the serialized record write to land, then verify healing.
+        await new Promise((r) => setTimeout(r, 200));
+        const healed = (await readEntry(dir))!;
+        assert.ok(
+          Array.isArray(healed['pgids']) && healed['pgids'].some((p) => Number.isInteger(p)),
+          'record path heals malformed pgids instead of dropping the write'
+        );
+      }
+      // Live sandbox untouched by the sweeps (G4-style).
+      assert.ok(fssync.existsSync(dir), 'live sandbox dir survives malformed-entry sweeps');
+
+      // Stale entry with malformed pgids still reaps the dir without throwing.
+      const stale = (await readEntry(dir))!;
+      stale['pgids'] = 'nope';
+      stale['hostStart'] = 'SIMULATED-RECYCLED-PID';
+      await fs.writeFile(entryFileFor(dir), JSON.stringify(stale));
+      await assert.doesNotReject(reapStaleSandboxes());
+      assert.ok(!fssync.existsSync(dir), 'stale dir reaped despite malformed pgids');
+    } finally {
+      await sandbox.destroy();
+    }
+  });
 });
