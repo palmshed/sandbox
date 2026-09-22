@@ -20,7 +20,7 @@ are described in `docs/api.md`.
 | `ERR_DISK_QUOTA_EXCEEDED` | Resource error | The workspace grew past `diskQuota`                                  | Yes (`recoverable: true`, workspace rolled back) |
 | `EXEC_FAILED`           | SandboxError    | A process could not be spawned, or the backend lost its container    | Usually: probe first |
 | `FS_ERROR`              | SandboxError    | A filesystem operation was refused or failed                          | Yes, unless the sandbox FS is corrupt |
-| `INVALID_BACKEND`       | SandboxError    | Backend creation/startup failed or the backend name is unknown        | No sandbox exists yet; retry creation |
+| `INVALID_BACKEND`       | SandboxError    | Backend creation/startup failed, the backend name is unknown, or the Docker daemon was lost mid-operation | Creation-time: no sandbox exists yet, retry creation; mid-operation: destroy and recreate once the daemon is back |
 | `TIMEOUT`               | *declared, not thrown* | Reserved. Wall-clock timeouts surface as the `timedout` status instead | Yes |
 | `OOM`                   | *legacy*        | Replaced by `ERR_OOM_EXCEEDED`                                        | Yes |
 | `UNKNOWN`               | *reserved*      | Not currently emitted by any backend                                   | n/a |
@@ -75,12 +75,13 @@ are described in `docs/api.md`.
 
 ## `INVALID_BACKEND` (SandboxError)
 
-- **Meaning**: No such execution backend exists, or the requested backend failed to start.
+- **Meaning**: No such execution backend exists, the requested backend failed to start, or a live backend lost its substrate mid-operation.
 - **Typical cause**
   - `backend: 'unknown-name'` passed to `Sandbox.create`.
   - Docker daemon unreachable, image missing, or the container failed to start (`docker run` non-zero exit).
   - The Docker CLI itself could not be spawned.
-- **Recovery behavior**: Adjust the backend name/config or fix the Docker setup, then retry `Sandbox.create`. No sandbox instance is returned on failure.
+  - The Docker daemon dropped mid-execution or mid-transfer (scoped CLI-stderr match, so a workload failure is never misreported as daemon loss).
+- **Recovery behavior**: Adjust the backend name/config or fix the Docker setup, then retry `Sandbox.create`. For mid-operation loss, destroy the sandbox and recreate it once the daemon is back. No sandbox instance is returned on creation failure.
 - **Sandbox reuse expected**: n/a; there is no sandbox to reuse.
 
 ---

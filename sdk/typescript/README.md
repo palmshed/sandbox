@@ -44,14 +44,18 @@ Capabilities are reported per backend via `sandbox.capabilities`:
   cpuLimits: true,
   memoryLimits: true,
   streaming: true,
+  osFilesystemIsolation: 'supported', // 'supported' | 'unsupported' | 'unknown' (RFC 0006)
+  cpuQuotaLimits: true,               // hard rate cap enforced (RFC 0007; false where unsupported)
   remoteExecution: false
 }
 ```
 
 The `native` backend enforces CPU time budgets and memory limits via
 process-group accounting on Linux and macOS, with best-effort coverage on
-Windows. The `docker` backend provides filesystem operations and streaming;
-CPU/memory limits and network isolation are not yet enabled for it.
+Windows. The `docker` backend enforces the same boundaries container-wide
+with integration coverage. OS-level filesystem isolation (`osFilesystemIsolation`)
+holds on Linux via Landlock; CPU hard quotas (`cpuQuota`) throttle instead of
+killing on Linux, Windows, and Docker where each platform's probe passes.
 
 ## Documentation
 

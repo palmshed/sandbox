@@ -89,7 +89,7 @@ export class NativeBackend implements BackendEngine {
     streaming: true,
     osFilesystemIsolation: 'unknown',  // RFC 0006 tri-state: supported/unsupported/unknown, probed at init (Linux + Landlock)
     remoteExecution: false,
-    cpuQuotaLimits: false, // RFC 0007: hard rate caps not yet enforced; promote per backend only after compliance tests pass
+    cpuQuotaLimits: false, // RFC 0007: pre-probe default; init promotes where cgroups v2 (Linux) or Job Objects (Windows) probe true
   };
   private sandboxDir: string = '';
   /** realpath of sandboxDir, used as the containment base for VFS resolution */

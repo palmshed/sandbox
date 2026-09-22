@@ -5,7 +5,7 @@
 Palmshed Sandbox (`palmshed/sandbox`) isolates untrusted process execution. Security isolation depends on the active execution backend:
 
 - **Native Backend**: Soft process isolation using OS temporary directory boundary & environment controls.
-- **Docker Backend**: Containerized execution driver (wires `docker run/exec/cp/stop`). Resource enforcement and network isolation are NOT yet implemented or integration-tested; the backend reports `cpuLimits`, `memoryLimits`, and `networkIsolation` as `false` (work item `#4`). Do not rely on Docker for CPU/memory/network boundaries today.
+- **Docker Backend**: Containerized execution driver (wires `docker run/exec/cp/stop`). Resource enforcement and network isolation are enforced since backend-parity work item `#4` (`cpuLimits`, `memoryLimits`, and `networkIsolation` all `true` with integration coverage); verify `sandbox.capabilities` before relying on Docker CPU/memory/network boundaries, and note the documented residuals (per-process CPU granularity, serialized container-wide updates).
 - **Firecracker / WASI (Future)**: MicroVM and WebAssembly capability sandboxing.
 
 ## Filesystem Isolation Boundary
