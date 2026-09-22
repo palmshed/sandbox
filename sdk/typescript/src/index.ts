@@ -11,5 +11,6 @@ export {
   SandboxResourceError,
   ResourceErrorCode,
   SandboxResourceErrorDetails,
+  SPEC_VERSION,
 } from './core/types.js';
 export { BackendEngine, registerBackend, createBackend } from './backends/index.js';

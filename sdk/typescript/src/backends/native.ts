@@ -4,7 +4,7 @@ import * as fssync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { BackendCapabilities, BackendEngine } from './interface.js';
-import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError } from '../core/types.js';
+import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError, SPEC_VERSION } from '../core/types.js';
 import { logDebug } from '../core/log.js';
 import {
   installCrashHooks,
@@ -1032,7 +1032,7 @@ export class NativeBackend implements BackendEngine {
         const metadata = {
           id: execId,
           backend: this.name,
-          specVersion: '1.2.0',
+          specVersion: SPEC_VERSION,
           startedAt: new Date(startTime).toISOString(),
           finishedAt: new Date(finishedAtMs).toISOString(),
           durationMs,

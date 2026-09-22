@@ -9,6 +9,7 @@ import {
   SandboxError,
   SandboxOptions,
   SandboxResourceError,
+  SPEC_VERSION,
 } from '../core/types.js';
 import { logDebug } from '../core/log.js';
 
@@ -644,7 +645,7 @@ export class DockerBackend implements BackendEngine {
         const metadata = {
           id: execId,
           backend: this.name,
-          specVersion: '1.2.0',
+          specVersion: SPEC_VERSION,
           startedAt: new Date(startTime).toISOString(),
           finishedAt: new Date(finishedAtMs).toISOString(),
           durationMs,
