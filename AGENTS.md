@@ -84,6 +84,10 @@ sandbox/
 │   ├── quota-aware-evaluator/ # Consumer example: evaluate submissions under cpuQuota (published package)
 │   │   ├── package.json   # Depends on @palmshed/sandbox from the npm registry
 │   │   └── evaluate.mjs   # Capability discovery, capped submissions, override demo
+│   ├── starlark-eval/     # Consumer example: Starlark programs as ordinary workloads (published package)
+│   │   ├── package.json   # Depends on @palmshed/sandbox from the npm registry
+│   │   ├── policy.star    # Minimal Starlark workload fixture
+│   │   └── evaluate.mjs   # Interpreter provisioning, native exec, Docker guidance
 │   └── README.md          # Usage examples overview
 ├── production/            # Production Validation Suite (packed-artifact end-to-end gates)
 │   ├── run.mjs            # Scenario runner (--list / --only / --verbose, residue checks)
