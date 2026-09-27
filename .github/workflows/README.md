@@ -11,6 +11,7 @@
 | `scheduled-tests.yml` | Weekly Monday SDK test run plus nightly sustained soak and exact-version gate, all against the packed release artifact | Manual (`workflow_dispatch`), Schedule (weekly Monday, nightly) | ubuntu |
 | `probes.yml` | Landlock capability probe and runtime-allowlist confinement smoke on the real Ubuntu runner image | Push, Pull Request | ubuntu-24.04 (pinned) |
 | `production.yml` | Packed-artifact production validation scenarios and soak across the OS matrix | Push, Pull Request (paths: `production/**`, `sdk/typescript/src/**`, `sdk/typescript/package.json`) | ubuntu, macOS, Windows |
+| `benchmarks.yml` | Informational benchmark evidence generation (cold start, overhead, parallel, host); uploads evidence artifacts, never gates, never asserts targets | Push (paths: `benchmarks/**`), Manual (`workflow_dispatch`) | ubuntu, macOS |
 | `release.yml` | Version-gated release: validation gate, pack contents verification, artifacts & SBOM, GitHub release, npm publish + registry smoke test (TypeScript); Rust/Go/Python publishers are placeholders. The publish job is idempotent (skips already-published versions) and the smoke test retries install for up to 150s to absorb registry propagation delay | Version tags (`v*`) | ubuntu-24.04 (pinned) |
 
 ## Governance & Secrets
