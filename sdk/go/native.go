@@ -73,10 +73,32 @@ func newNativeBackend(opts SandboxOptions) (*nativeBackend, error) {
 	}, nil
 }
 
+// isAbsoluteHostPath reports whether p looks like a host-absolute path on
+// any supported platform. Go's filepath.IsAbs is platform-selective (a
+// leading slash is not absolute on Windows), so the contract check is
+// spelled out: POSIX roots, Windows drive letters, UNC shares, and
+// backslash roots are all host paths and must be rejected, never silently
+// contained. This matches the reference resolveSandboxPath semantics.
+func isAbsoluteHostPath(p string) bool {
+	if strings.HasPrefix(p, "/") || strings.HasPrefix(p, "\\") {
+		return true
+	}
+	if len(p) >= 3 && p[1] == ':' && (p[2] == '/' || p[2] == '\\') {
+		return true
+	}
+	if len(p) >= 2 && ((p[0] >= 'a' && p[0] <= 'z') || (p[0] >= 'A' && p[0] <= 'Z')) && p[1] == ':' {
+		return true
+	}
+	if strings.HasPrefix(p, `\\`) {
+		return true
+	}
+	return false
+}
+
 // resolve contains a sandbox-relative path, rejecting absolute host paths
 // and parent traversal before any IO happens.
 func (b *nativeBackend) resolve(p string) (string, error) {
-	if filepath.IsAbs(p) {
+	if isAbsoluteHostPath(p) {
 		return "", newError(CodeFSError, "absolute host path rejected: "+p)
 	}
 	clean := filepath.Clean("/" + p)
