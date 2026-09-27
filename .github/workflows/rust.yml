@@ -1,0 +1,45 @@
+name: Rust SDK
+
+# F1 contract gate: stable toolchain, zero warnings, contract plus basic
+# suites on all three OSes. Informational for now (not a required check);
+# promotes to required when the first 0.x release is cut.
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'sdk/rust/**'
+      - '.github/workflows/rust.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'sdk/rust/**'
+      - '.github/workflows/rust.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rust-test:
+    name: rust-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Contract and basic suites (deny warnings)
+        run: cargo test --locked
+        working-directory: sdk/rust
+        env:
+          RUSTFLAGS: -D warnings
+
+      - name: Lints
+        run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: sdk/rust

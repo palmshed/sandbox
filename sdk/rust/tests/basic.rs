@@ -15,7 +15,7 @@ async fn create_exec_result_destroy() {
     assert_eq!(ex.status(), ExecutionStatus::Completed);
     assert_eq!(ex.exit_code(), 0);
     assert!(ex.stdout().contains("hello-rust"));
-    assert_eq!(ex.truncated(), false);
+    assert!(!ex.truncated());
     let meta = ex.metadata().unwrap();
     assert_eq!(meta.backend, "native");
     assert_eq!(meta.spec_version, palmshed_sandbox::SPEC_VERSION);
