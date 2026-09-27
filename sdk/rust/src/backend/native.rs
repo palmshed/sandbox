@@ -76,8 +76,39 @@ fn kill_tree(pid: u32) {
     }
 }
 
+/// Retry an IO operation through transient Windows failures.
+///
+/// Windows can surface sharing violations (os error 32) and "file in use"
+/// while a just-exited child still holds a handle, or while an indexer
+/// scans the workspace. These are transient, not contract failures, so a
+/// short bounded retry keeps behavior honest without weakening any
+/// assertion (the same class the production suite handles for `fs.rm`).
+async fn retry_io<T, F, Fut>(mut op: F) -> std::io::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = std::io::Result<T>>,
+{
+    let mut last_err = None;
+    for attempt in 0..5u32 {
+        match op().await {
+            Ok(v) => return Ok(v),
+            Err(err) => {
+                let transient = matches!(err.raw_os_error(), Some(32) | Some(33) | Some(5))
+                    || err.kind() == std::io::ErrorKind::PermissionDenied;
+                if !transient {
+                    return Err(err);
+                }
+                last_err = Some(err);
+                tokio::time::sleep(std::time::Duration::from_millis(25 * (attempt as u64 + 1))).await;
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("retry_io exhausted")))
+}
+
 #[derive(Debug)]
-pub struct NativeBackend {    dir: PathBuf,
+pub struct NativeBackend {
+    dir: PathBuf,
     real_dir: PathBuf,
     options: SandboxOptions,
     capabilities: BackendCapabilities,
@@ -154,9 +185,22 @@ impl NativeBackend {
     pub async fn write_file(&self, sandbox_path: &str, content: &[u8]) -> Result<(), SandboxError> {
         let full = self.resolve(sandbox_path)?;
         if let Some(parent) = full.parent() {
-            tokio::fs::create_dir_all(parent).await.map_err(|e| SandboxError::new(e.to_string(), "FS_ERROR"))?;
+            let parent = parent.to_path_buf();
+            retry_io(|| {
+                let p = parent.clone();
+                async move { tokio::fs::create_dir_all(&p).await }
+            })
+            .await
+            .map_err(|e| SandboxError::new(e.to_string(), "FS_ERROR"))?;
         }
-        tokio::fs::write(&full, content).await.map_err(|e| SandboxError::new(e.to_string(), "FS_ERROR"))
+        let data = content.to_vec();
+        retry_io(|| {
+            let f = full.clone();
+            let d = data.clone();
+            async move { tokio::fs::write(&f, &d).await }
+        })
+        .await
+        .map_err(|e| SandboxError::new(e.to_string(), "FS_ERROR"))
     }
 
     pub async fn upload_file(&self, local_path: &str, sandbox_path: &str) -> Result<(), SandboxError> {
@@ -354,8 +398,19 @@ impl NativeBackend {
         for pid in pids {
             kill_tree(pid);
         }
-        tokio::fs::remove_dir_all(&self.dir).await.map_err(|e| SandboxError::new(e.to_string(), "EXEC_FAILED"))?;
-        Ok(())
+        // Retry through transient Windows sharing violations: a just-killed
+        // tree can still hold handles inside the workspace for a moment.
+        let dir = self.dir.clone();
+        let result = retry_io(move || {
+            let d = dir.clone();
+            async move { tokio::fs::remove_dir_all(&d).await }
+        })
+        .await;
+        match result {
+            Ok(()) => Ok(()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(SandboxError::new(err.to_string(), "EXEC_FAILED")),
+        }
     }
 }
 
