@@ -7,7 +7,7 @@ export type NetworkPolicy = 'disabled' | 'allow' | 'proxy';
  * source of truth so native and docker backends cannot drift on release
  * bumps; keep in sync with spec/version.md (enforced by verify-release).
  */
-export const SPEC_VERSION = '1.2.0';
+export const SPEC_VERSION = '1.3.0';
 
 export interface ResourceLimits {
   /** Number of CPU cores allocated (e.g. 1, 2, 0.5). Shared hard rate-cap semantics with cpuQuota (RFC 0007); cpuQuota takes precedence when set. Throttles, never kills; enforcement reported via cpuQuotaLimits (native Linux and Windows true where their probes pass; Docker true where the daemon supports updates.) */

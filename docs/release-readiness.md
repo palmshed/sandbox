@@ -122,6 +122,27 @@ Claimable guarantees at v1.0.0:
   `recovery` production scenario; covered by the existing `fail-then-reuse`
   crash case. No public API or spec schema changes.
 
+## Release v1.3.0 (minor: observability and output-safety batch)
+
+Per `spec/compatibility.md` (minor releases carry backward-compatible
+feature additions), the Unreleased batch ships as spec and SDK version
+`1.3.0`, an optional extension to the frozen 1.0.0 contract plus one
+documented retention behavior:
+
+- `spec/version.md` reports `1.3.0`; `spec/CHANGELOG.md` carries the
+  `[1.3.0]` entry; SDK `specVersion` metadata reports `1.3.0` on both
+  backends.
+- `peakMemoryBytes` (best-effort, optional, absent when unmeasurable) on
+  result and metadata; bounded retained output (16 MiB/stream tail,
+  marker, optional `truncated` with absent-means-unknown per issue
+  `#13`); macOS Seatbelt confinement under the existing
+  `osFilesystemIsolation` tri-state (no schema change).
+- Tag `v1.3.0` drives `release.yml`: version gate (tag == SDK == spec),
+  full preflight in release mode, GitHub release, npm publish to `latest`,
+  then the registry smoke test against the freshly published package.
+- Post-publish, the consumer harness (`examples/consumer-test/run-published.sh`
+  against the new version) provides the external-consumer evidence.
+
 ## Release v1.2.0 (minor: optional cpuQuotaLimits capability)
 
 Per `spec/compatibility.md` (minor releases carry backward-compatible feature
