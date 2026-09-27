@@ -129,6 +129,40 @@ async function main() {
   }
   report.check(`$ref resolution (${[...refs.values()].flat().length} refs)`, refCheck, refCheck ? '' : refDetails.join('; '));
 
+  // Issue #13: truncated is optional so third-party producers stay
+  // compatible (absent means unknown, never false). Prove at the schema
+  // layer that producer omission validates on both surfaces and that
+  // explicit values validate too. SDK emission determinism is covered by
+  // compliance/sdk/result-shape.test.js (this script owns the ajv
+  // dependency; compliance jobs do not install root devDependencies).
+  const execDoc = schemas.get('exec.schema.json');
+  if (execDoc?.definitions?.ExecResult && execDoc?.definitions?.ExecutionMetadata) {
+    // Non-strict instance: the meta-schema gate above already enforces
+    // structural strictness; here unknown formats (date-time) must not fail.
+    const { Ajv2020: AjvLenient } = await import('ajv/dist/2020.js');
+    const lax = new AjvLenient({ strict: false });
+    const at = (name) => lax.compile({ definitions: execDoc.definitions, $ref: `#/definitions/${name}` });
+    const validateResult = at('ExecResult');
+    const validateMetadata = at('ExecutionMetadata');
+    const metadata = {
+      id: 'exec_probe', backend: 'native', specVersion: '1.2.0',
+      startedAt: '2026-09-27T00:00:00.000Z', finishedAt: '2026-09-27T00:00:01.000Z',
+      durationMs: 1000, exitCode: 0, timedOut: false,
+    };
+    const base = {
+      id: 'exec_probe', exitCode: 0, stdout: 'hi', stderr: '',
+      durationMs: 1000, timedOut: false, metadata: { ...metadata },
+    };
+    const omissionOk = validateResult({ ...base }) === true && validateMetadata({ ...metadata }) === true;
+    report.check('ExecResult/metadata validate without truncated (producer omission)', omissionOk, omissionOk ? '' : 'omission must validate: absent means unknown');
+    const explicitOk =
+      validateResult({ ...base, truncated: true }) === true &&
+      validateResult({ ...base, truncated: false, metadata: { ...metadata, truncated: false } }) === true;
+    report.check('ExecResult/metadata validate with explicit truncated', explicitOk, explicitOk ? '' : 'explicit true/false must validate');
+  } else {
+    report.check('ExecResult/metadata truncated optionality', false, 'exec.schema.json definitions missing');
+  }
+
   const exit = report.finish();
   process.exit(exit);
 }
