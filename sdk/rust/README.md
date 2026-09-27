@@ -21,7 +21,10 @@ native OS glue and no Node dependency. Binding rules:
   are accepted but not enforced (capabilities report `false`).
 - No network policies or OS filesystem confinement yet.
 - No signal field in metadata.
-- Linux/Windows compile but are CI-untested for Rust so far.
+- CI runs `cargo test --locked` and `clippy -D warnings` on ubuntu,
+  macOS, and windows (`.github/workflows/rust.yml`). The gate has already
+  caught a real Windows-only defect (missing `SystemRoot` in the env
+  allowlist), so treat it as load-bearing, not decorative.
 
 ## Verify
 

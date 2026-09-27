@@ -35,7 +35,7 @@
 
 1. **Runtime Specification (`spec/`)**: JSON Schemas & versioning ([`spec/version.md`](spec/version.md)).
 2. **Compliance Suite (`compliance/`)**: Cross-language conformance test suite.
-3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript)); Rust, Go, and Python SDKs are planned.
+3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript)); Rust SDK at the F1 milestone ([`sdk/rust`](sdk/rust), native backend, 0.x line); Go and Python planned.
 4. **Backends (`backends/`)**: Native process driver, Docker container driver; Firecracker and WASI are planned.
 
 ---
