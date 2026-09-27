@@ -262,6 +262,8 @@ const meta = execution.metadata();
 
 `truncated` is true once retained output dropped bytes on any stream.
 `cpuTimeMs` and `peakMemoryBytes` are best-effort and may be absent.
+`truncated` is optional in the schema (absent means unknown, never
+false); the reference SDK always emits it.
 
 ### `execution.result()`
 

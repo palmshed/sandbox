@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (behavior note, issue `#12`)
 
-- Retained execution output is now bounded: `ExecResult`/`ExecutionMetadata` carry a required `truncated` boolean, and `stdout`/`stderr` retain at most the last 16 MiB per stream (whole-chunk tail eviction, truncation marker prefix when bytes were dropped). Real-time `onStdout`/`onStderr` callbacks and piped `stdout`/`stderr` streams are unaffected and remain the complete, lossless route to full output. Consumers parsing more than 16 MiB of retained output per stream observe different strings; use the streaming path for complete capture.
+- Retained execution output is now bounded: `ExecResult`/`ExecutionMetadata` carry a `truncated` boolean, and `stdout`/`stderr` retain at most the last 16 MiB per stream (whole-chunk tail eviction, truncation marker prefix when bytes were dropped). `truncated` is optional in the schema (absent means unknown, never false) so third-party producers stay compatible; the reference SDK always emits it. Real-time `onStdout`/`onStderr` callbacks and piped `stdout`/`stderr` streams are unaffected and remain the complete, lossless route to full output. Consumers parsing more than 16 MiB of retained output per stream observe different strings; use the streaming path for complete capture.
 
 ---
 

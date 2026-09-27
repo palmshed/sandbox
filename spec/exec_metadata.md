@@ -31,11 +31,13 @@ example, an execution shorter than the first sample).
 Retained `stdout`/`stderr` keep at most the last 16 MiB per stream
 (whole-chunk tail eviction). When bytes were dropped, the retained text
 is prefixed with a marker of the form `[output truncated: showing last
-X of Y bytes]` and the required `truncated` boolean is true on both the
+X of Y bytes]` and the `truncated` boolean is true on both the
 result and the metadata (sticky for the execution lifetime).
 Real-time `onStdout`/`onStderr` callbacks and piped `stdout`/`stderr`
 streams are unaffected: they observe every byte and are the lossless
-route to full output.
+route to full output. `truncated` is optional in the schema for producer
+compatibility (a third-party backend may omit it); absent means unknown,
+never false. The reference SDK always emits it deterministically.
 
 ## First-Class Execution Object Interface
 
