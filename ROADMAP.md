@@ -247,6 +247,25 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 ---
 
+## Future Units (post-1.3.0 expansion)
+
+Deliberate expansion beyond the released runtime. Each unit follows
+`spec → smallest implementation → compliance → real consumer → evidence →
+release`, one unit at a time, and none is started without a concrete
+requirement. No open issue tracks these yet by design.
+
+| Unit | Track | Goal | State |
+|---|---|---|---|
+| **F1** | Rust SDK | Second SDK proving the spec is language-independent (own OS glue, no Node) | Implementation milestone done (`sdk/rust/`, RFC 0008): contract + basic suites, 3-OS CI gate, consumer example; 0.x release decision pending |
+| **F2** | Go SDK | Same contract in Go | Not started |
+| **F3** | Python SDK | Same contract in Python | Not started |
+| **F4** | Firecracker backend | MicroVM isolation engine | Not started |
+| **F5** | WASI backend | WebAssembly execution model | Not started |
+| **F6** | Remote daemon backend | Execution over a remote boundary (would make `remoteExecution` true) | Not started |
+| **F7** | Host mounts | Explicit opt-in host-path exposure under the filesystem-isolation model | Not started |
+
+---
+
 ## Living Engineering Gist Maintenance Plan
 
 Maintain the central project Gist alongside every capability transition as a cumulative engineering log (preserving past validation history while appending new revisions):

@@ -45,11 +45,11 @@ sandbox/
 │   ├── run.mjs            # Metric runner (cold, overhead, parallel, host + JSON evidence)
 │   └── README.md          # Accepted measurement definitions and methodology
 ├── sdk/                   # Language-specific SDKs
-│   ├── typescript/        # Phase 1 Reference TypeScript SDK
+│   ├── typescript/        # Reference TypeScript SDK (published npm package)
 │   │   └── src/osfs/      # RFC 0006 OS-filesystem isolation (embedded Landlock source, allowlist, confinement probe)
 │   ├── rust/              # F1 Rust SDK (`palmshed-sandbox` crate: Sandbox/Execution/types/errors + native OS glue; no Node dependency)
-│   ├── go/                # Phase 3 Go SDK
-│   └── python/            # Phase 3 Python SDK (AI agent frameworks)
+│   ├── go/                # Go SDK (planned, future unit F2)
+│   └── python/            # Python SDK (planned, future unit F3; AI agent frameworks)
 ├── scripts/
 │   ├── punctuation-check.mjs  # CI: hard-fail on Unicode em dash in prose; warn-only on prose --
 │   ├── gen-osfs-source.mjs     # Regenerates the embedded Landlock runner source (landlockRunnerSource.ts); --check guards drift

@@ -4,5 +4,5 @@ This directory houses pluggable execution engine drivers implementing the core `
 
 - `native/`: Local OS process isolation reference driver.
 - `docker/`: Containerized execution driver.
-- `firecracker/`: MicroVM driver (Phase 3).
-- `wasi/`: WebAssembly sandbox driver (Phase 3).
+- `firecracker/`: MicroVM driver (planned, future unit F4).
+- `wasi/`: WebAssembly sandbox driver (planned, future unit F5).
