@@ -1,0 +1,51 @@
+name: Go SDK
+
+# F2 contract gate: `go test -race ./...` is a mandatory gate, not an
+# extra. The race detector verifies the RFC 0009 section 2 synchronization
+# (drain goroutines writing while the caller reads); the contract stays
+# the authority on behavior. Informational until the go-v0.1.0 release.
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'sdk/go/**'
+      - '.github/workflows/go.yml'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'sdk/go/**'
+      - '.github/workflows/go.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  go-test:
+    name: go-test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Go (stable)
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache-dependency-path: sdk/go/go.sum
+
+      # Mandatory gate: the race detector is how the concurrency contract
+      # is proven, exactly as the borrow checker is for Rust.
+      - name: Contract suite (race detector mandatory)
+        run: go test -race ./...
+        working-directory: sdk/go
+
+      - name: Vet
+        run: go vet ./...
+        working-directory: sdk/go
+
+      - name: Consumer (full lifecycle)
+        run: go run ./cmd/consumer
+        working-directory: sdk/go
