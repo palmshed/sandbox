@@ -69,10 +69,15 @@ jobs:
           GOARCH: amd64
 
       - name: Vet
-        run: |
-          go vet ./...
-          GOOS=windows GOARCH=amd64 go vet ./...
+        run: go vet ./...
         working-directory: sdk/go
+
+      - name: Vet (windows target)
+        run: go vet ./...
+        working-directory: sdk/go
+        env:
+          GOOS: windows
+          GOARCH: amd64
 
       - name: Consumer (full lifecycle)
         run: go run ./cmd/consumer
