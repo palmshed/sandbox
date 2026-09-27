@@ -5,13 +5,12 @@ import * as fs from 'node:fs/promises';
 import { Sandbox } from '../../sdk/typescript/dist/index.js';
 
 /**
- * Spec-Version: 1.2.0 (Unreleased, RFC 0007 design accepted)
+ * Spec-Version: 1.2.0 (released; RFC 0007 implemented on Linux, Windows, Docker)
  *
  * CPU hard quota compliance (Q1-Q6): rate caps that throttle, never kill.
- * Transcribed from the RFC 0007 compliance test plan; enforcement is NOT
- * implemented yet, so every enforcement group gates on the backend reporting
- * cpuQuotaLimits === true and skips until per-backend promotion. When a
- * backend promotes the flag, its group runs without further changes.
+ * Transcribed from the RFC 0007 compliance test plan. Enforcement groups
+ * gate on the backend reporting cpuQuotaLimits === true and skip where
+ * the probe does not pass (macOS reports false by design).
  *
  * Only the macOS honesty test runs today (macOS stays false permanently per
  * the RFC): it asserts the flag and unthrottled completion.
