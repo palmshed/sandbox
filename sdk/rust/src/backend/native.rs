@@ -19,10 +19,30 @@ use crate::types::{
     OsFilesystemIsolationStatus, SandboxOptions,
 };
 
+/// Current UTC time as ISO-8601 with millis (civil-date conversion,
+/// no extra dependencies).
 fn now_iso() -> String {
-    // ISO-8601 UTC with millis, built without extra dependencies.
-    let ms = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis();
-    format!("{}ms-since-epoch:{}", ms / 1000, ms % 1000)
+    let ms_total = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64;
+    let secs = ms_total.div_euclid(1000);
+    let ms = ms_total.rem_euclid(1000);
+    let days = secs.div_euclid(86400);
+    let sod = secs.rem_euclid(86400);
+    // Howard Hinnant days-to-civil.
+    let z = days + 719468;
+    let era = z.div_euclid(146097);
+    let doe = z - era * 146097;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}.{:03}Z",
+        year, m, d,
+        sod / 3600, (sod % 3600) / 60, sod % 60, ms
+    )
 }
 
 fn exec_id() -> String {
