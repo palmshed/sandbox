@@ -22,7 +22,10 @@ test('Bounded output retention (native backend)', async (t) => {
     await execution.wait();
 
     assert.equal(execution.status(), 'completed');
-    assert.equal(execution.stdout(), 'Hello Retention\n');
+    // Regex, not exact equality: Windows cmd echoes with literal quotes
+    // and CRLF line endings, while POSIX shells print bare LF text.
+    assert.match(execution.stdout(), /Hello Retention/);
+    assert.ok(!execution.stdout().includes('output truncated'));
     assert.equal(execution.truncated, false);
     assert.equal(execution.metadata()!.truncated, false);
     assert.equal(execution.result()!.truncated, false);

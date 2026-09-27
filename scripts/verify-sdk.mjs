@@ -48,12 +48,13 @@ function main() {
   const summary = counts && counts.tests != null ? `${counts.pass}/${counts.tests} tests` : 'no test summary';
   // On failure, surface the failing test names: node --test prints them in
   // a trailing 'failing tests' section, which is what a triager needs first.
+  // Fall back to the output tail (counts/summary) when the marker is absent.
   let detail = summary;
   if (!(test.ok && counts?.fail === 0)) {
-    const combined = test.stdout + '\n' + test.stderr;
-    const marker = combined.lastIndexOf('failing tests');
-    const tail = marker === -1 ? combined : combined.slice(marker);
-    detail = `${summary}\n${tail.split('\n').slice(0, 40).join('\n')}`;
+    const lines = (test.stdout + '\n' + test.stderr).split('\n');
+    const markerIdx = lines.findLastIndex((l) => l.includes('failing tests'));
+    const tail = markerIdx === -1 ? lines.slice(-40) : lines.slice(Math.max(0, markerIdx - 2), markerIdx + 58);
+    detail = `${summary}\n${tail.join('\n')}`;
   }
   report.check(
     'SDK unit/integration/stress tests',

@@ -19,10 +19,14 @@ test('Peak memory reporting (native backend)', async (t) => {
   });
 
   await t.test('reports a peak covering a sustained allocation without any limit configured', async () => {
+    // Written as a file so no shell quoting is involved (Windows cmd.exe
+    // quoting rules differ from POSIX shells).
     const allocBytes = 40 * 1024 * 1024;
-    const execution = await sandbox.exec(
-      `node -e "const a = Buffer.alloc(${allocBytes}, 1); setTimeout(() => {}, 1500);"`
+    await sandbox.writeFile(
+      'alloc.js',
+      `const a = Buffer.alloc(${allocBytes}, 1); setTimeout(() => {}, 1500);`
     );
+    const execution = await sandbox.exec('node alloc.js');
     await execution.wait();
 
     assert.equal(execution.status(), 'completed');
@@ -56,9 +60,11 @@ test('Peak memory reporting (native backend)', async (t) => {
 
   await t.test('peak never exceeds a sane multiple of the footprint', async () => {
     const allocBytes = 20 * 1024 * 1024;
-    const execution = await sandbox.exec(
-      `node -e "const a = Buffer.alloc(${allocBytes}, 1); setTimeout(() => {}, 1200);"`
+    await sandbox.writeFile(
+      'alloc-small.js',
+      `const a = Buffer.alloc(${allocBytes}, 1); setTimeout(() => {}, 1200);`
     );
+    const execution = await sandbox.exec('node alloc-small.js');
     await execution.wait();
 
     const peak = execution.metadata()!.peakMemoryBytes;
