@@ -1,0 +1,13 @@
+[package]
+name = "palmshed-sandbox"
+version = "0.1.0"
+edition = "2021"
+description = "Rust SDK for the Palmshed Sandbox runtime (F1; implements the spec contract, see rfcs/0008-rust-sdk-bindings.md)"
+license = "MIT"
+
+[dependencies]
+tokio = { version = "1", features = ["process", "fs", "time", "sync", "macros", "rt-multi-thread", "io-util"] }
+libc = "0.2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["process", "fs", "time", "sync", "macros", "rt-multi-thread", "test-util"] }

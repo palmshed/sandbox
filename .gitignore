@@ -1,6 +1,7 @@
 # .gitignore for palmshed/sandbox
 node_modules/
 dist/
+target/
 *.log
 .DS_Store
 *.tgz

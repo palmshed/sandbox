@@ -47,7 +47,7 @@ sandbox/
 ├── sdk/                   # Language-specific SDKs
 │   ├── typescript/        # Phase 1 Reference TypeScript SDK
 │   │   └── src/osfs/      # RFC 0006 OS-filesystem isolation (embedded Landlock source, allowlist, confinement probe)
-│   ├── rust/              # Phase 2 Rust SDK & core engine
+│   ├── rust/              # F1 Rust SDK (`palmshed-sandbox` crate: Sandbox/Execution/types/errors + native OS glue; no Node dependency)
 │   ├── go/                # Phase 3 Go SDK
 │   └── python/            # Phase 3 Python SDK (AI agent frameworks)
 ├── scripts/
