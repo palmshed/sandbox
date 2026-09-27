@@ -39,7 +39,22 @@ test('Peak memory reporting (native backend)', async (t) => {
     );
   });
 
-  await t.test('peak is a lower bound that never exceeds a sane multiple of the footprint', async () => {
+  await t.test('short executions report a small peak or a documented absence', async () => {
+    const execution = await sandbox.exec('echo hi');
+    await execution.wait();
+
+    assert.equal(execution.status(), 'completed');
+    const peak = execution.metadata()!.peakMemoryBytes;
+    // Either a sub-sample-interval exec missed every sample (undefined, the
+    // documented absence) or the baseline caught the shell (small value).
+    assert.ok(
+      peak === undefined || peak < 100 * 1024 * 1024,
+      `unexpected peak for a trivial exec: ${peak}`
+    );
+    assert.equal(execution.result()!.peakMemoryBytes, peak);
+  });
+
+  await t.test('peak never exceeds a sane multiple of the footprint', async () => {
     const allocBytes = 20 * 1024 * 1024;
     const execution = await sandbox.exec(
       `node -e "const a = Buffer.alloc(${allocBytes}, 1); setTimeout(() => {}, 1200);"`

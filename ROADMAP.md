@@ -176,7 +176,7 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 
 > **Goal**: Enable operators to inspect runtime behavior and rely on predictable performance.
 
-- [ ] **Observability**: Assign unique `execution_id`, fine-grained timing metrics, peak resource reporting
+- [x] **Observability**: unique `execution_id`, fine-grained timing metrics, peak resource reporting (`peakMemoryBytes` best-effort on result and metadata; issue `#8` narrowed scope delivered)
 - [ ] **Benchmark Expectations (Target Baselines)**:
   - Cold startup latency ($<50\text{ms}$ native)
   - Execution overhead ($<5\%$)
