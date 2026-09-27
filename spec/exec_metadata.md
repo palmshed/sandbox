@@ -25,6 +25,17 @@ missed); Docker reports the maximum sampled container memory usage
 share the reading). The field is absent when no sample succeeded (for
 example, an execution shorter than the first sample).
 
+## Bounded output retention
+
+Retained `stdout`/`stderr` keep at most the last 16 MiB per stream
+(whole-chunk tail eviction). When bytes were dropped, the retained text
+is prefixed with a marker of the form `[output truncated: showing last
+X of Y bytes]` and the required `truncated` boolean is true on both the
+result and the metadata (sticky for the execution lifetime).
+Real-time `onStdout`/`onStderr` callbacks and piped `stdout`/`stderr`
+streams are unaffected: they observe every byte and are the lossless
+route to full output.
+
 ## First-Class Execution Object Interface
 
 Rather than returning a raw result object, `sandbox.exec()` returns an `Execution` object handle:

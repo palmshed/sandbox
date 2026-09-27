@@ -41,7 +41,7 @@
     },
     "ExecResult": {
       "type": "object",
-      "required": ["id", "exitCode", "stdout", "stderr", "durationMs", "timedOut"],
+      "required": ["id", "exitCode", "stdout", "stderr", "durationMs", "timedOut", "truncated"],
       "properties": {
         "id": {
           "type": "string",
@@ -51,16 +51,22 @@
           "type": "integer"
         },
         "stdout": {
-          "type": "string"
+          "type": "string",
+          "description": "Retained stdout output: at most the last 16 MiB per stream, prefixed with a truncation marker when bytes were dropped (see truncated)"
         },
         "stderr": {
-          "type": "string"
+          "type": "string",
+          "description": "Retained stderr output: bounded like stdout"
         },
         "durationMs": {
           "type": "number"
         },
         "timedOut": {
           "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True once retained output dropped bytes on any stream (sticky); real-time callbacks and piped streams are unaffected and complete"
         },
         "cpuTimeMs": {
           "type": "number",
@@ -78,7 +84,7 @@
     },
     "ExecutionMetadata": {
       "type": "object",
-      "required": ["id", "backend", "specVersion", "startedAt", "finishedAt", "durationMs", "exitCode", "timedOut"],
+      "required": ["id", "backend", "specVersion", "startedAt", "finishedAt", "durationMs", "exitCode", "timedOut", "truncated"],
       "properties": {
         "id": {
           "type": "string"
@@ -105,6 +111,10 @@
         },
         "timedOut": {
           "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean",
+          "description": "True once retained output dropped bytes on any stream (sticky)"
         },
         "cpuTimeMs": {
           "type": "number",

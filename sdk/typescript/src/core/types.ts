@@ -94,6 +94,11 @@ export interface ExecutionMetadata {
   durationMs: number;
   exitCode: number;
   timedOut: boolean;
+  /**
+   * True once retained output dropped bytes on any stream (sticky).
+   * Real-time callbacks and piped streams are unaffected and complete.
+   */
+  truncated: boolean;
   /** Total CPU time consumed by the process group in ms (best-effort) */
   cpuTimeMs?: number;
   /**
@@ -112,14 +117,19 @@ export interface ExecResult {
   id: string;
   /** Process exit code (0 usually indicates success) */
   exitCode: number;
-  /** Captured stdout output */
+  /** Retained stdout output (bounded; see truncated) */
   stdout: string;
-  /** Captured stderr output */
+  /** Retained stderr output (bounded; see truncated) */
   stderr: string;
   /** Execution duration in milliseconds */
   durationMs: number;
   /** True if execution was terminated due to timeout */
   timedOut: boolean;
+  /**
+   * True once retained output dropped bytes on any stream (sticky).
+   * Real-time callbacks and piped streams are unaffected and complete.
+   */
+  truncated: boolean;
   /** Total CPU time consumed by the process group in ms (best-effort) */
   cpuTimeMs?: number;
   /**

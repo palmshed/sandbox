@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { Readable } from 'stream';
 import { ExecResult, ExecutionMetadata } from './types.js';
+import { BoundedOutput } from './retention.js';
 
 export type ExecutionStatus =
   | 'running'
@@ -32,8 +33,8 @@ export interface ExecutionEvents {
  *
  * console.log(execution.status());   // "completed"
  * console.log(execution.exitCode);   // 0
- * console.log(execution.stdout());   // accumulated string (stream-safe for future)
- * console.log(execution.stderr());   // accumulated string
+ * console.log(execution.stdout());   // retained stdout (bounded; see truncated)
+ * console.log(execution.stderr());   // retained stderr (bounded)
  * console.log(execution.logs());     // stdout + stderr combined
  * console.log(execution.metadata()); // { id, backend, specVersion, startedAt, ... }
  * console.log(execution.result());   // raw ExecResult
@@ -44,8 +45,10 @@ export interface ExecutionEvents {
 export class Execution extends EventEmitter {
   private _status: ExecutionStatus;
   private _result: ExecResult | null = null;
-  private _stdoutLog: string[] = [];
-  private _stderrLog: string[] = [];
+  // Bounded retention (issue #12): at most the last 16 MiB per stream is
+  // kept. Real-time events below stay complete and unthrottled.
+  private readonly _stdout = new BoundedOutput();
+  private readonly _stderr = new BoundedOutput();
   private readonly _createdAt: number;
   private _settled: Promise<void>;
   private _settle!: () => void;
@@ -110,40 +113,44 @@ export class Execution extends EventEmitter {
   // ── Output methods (string, forward-compatible with streaming) ────────
 
   /**
-   * Returns accumulated stdout as a string.
-   * Prefer `on("stdout", …)` for real-time consumption.
-   * Future: may return a ReadableStream for large/remote outputs.
+   * Returns retained stdout as a string (at most the last 16 MiB; see
+   * `truncated`). Prefer `on("stdout", …)` for complete real-time
+   * consumption.
    */
   stdout(): string {
-    return this._stdoutLog.join('');
+    return this._stdout.text();
   }
 
   /**
-   * Returns accumulated stderr as a string.
-   * Prefer `on("stderr", …)` for real-time consumption.
+   * Returns retained stderr as a string (bounded like stdout).
+   * Prefer `on("stderr", …)` for complete real-time consumption.
    */
   stderr(): string {
-    return this._stderrLog.join('');
+    return this._stderr.text();
   }
 
-  /** Returns stdout + stderr interleaved as a single string */
+  /** Returns retained stdout + retained stderr as a single string */
   logs(): string {
-    return [...this._stdoutLog, ...this._stderrLog].join('');
+    return this._stdout.text() + this._stderr.text();
+  }
+
+  /** True once either stream dropped retained bytes (sticky). */
+  get truncated(): boolean {
+    return this._stdout.truncated || this._stderr.truncated;
   }
 
   /**
-   * Returns a Node.js Readable stream over accumulated stdout.
-   * Provides forward-compatibility for large or remotely-stored outputs.
+   * Returns a Node.js Readable stream over retained stdout.
    */
   stdoutStream(): Readable {
-    return Readable.from(this._stdoutLog.join(''));
+    return Readable.from(this._stdout.text());
   }
 
   /**
-   * Returns a Node.js Readable stream over accumulated stderr.
+   * Returns a Node.js Readable stream over retained stderr.
    */
   stderrStream(): Readable {
-    return Readable.from(this._stderrLog.join(''));
+    return Readable.from(this._stderr.text());
   }
 
   // ── Structured results ─────────────────────────────────────────────────
@@ -183,13 +190,13 @@ export class Execution extends EventEmitter {
 
   /** @internal */
   _onStdout(chunk: string): void {
-    this._stdoutLog.push(chunk);
+    this._stdout.push(chunk);
     this.emit('stdout', chunk);
   }
 
   /** @internal */
   _onStderr(chunk: string): void {
-    this._stderrLog.push(chunk);
+    this._stderr.push(chunk);
     this.emit('stderr', chunk);
   }
 

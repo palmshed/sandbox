@@ -12,6 +12,7 @@ import {
   SPEC_VERSION,
 } from '../core/types.js';
 import { logDebug } from '../core/log.js';
+import { BoundedOutput } from '../core/retention.js';
 
 /**
  * True when CLI stderr shows the Docker daemon itself is unreachable (as
@@ -631,8 +632,9 @@ export class DockerBackend implements BackendEngine {
     const timeout = options.timeout ?? this.options?.timeout ?? 0;
 
     return new Promise((resolve, reject) => {
-      let stdoutAcc = '';
-      let stderrAcc = '';
+      // Bounded retention (issue #12), same contract as the native backend.
+      const stdoutAcc = new BoundedOutput();
+      const stderrAcc = new BoundedOutput();
       let timedOut = false;
       let timer: NodeJS.Timeout | null = null;
       // Peak container memory usage in bytes across a workload execution.
@@ -668,14 +670,14 @@ export class DockerBackend implements BackendEngine {
 
       child.stdout?.on('data', (chunk: Buffer) => {
         const str = chunk.toString();
-        stdoutAcc += str;
+        stdoutAcc.push(str);
         if (options.onStdout) options.onStdout(str);
         if (options.stdout) options.stdout.write(chunk);
       });
 
       child.stderr?.on('data', (chunk: Buffer) => {
         const str = chunk.toString();
-        stderrAcc += str;
+        stderrAcc.push(str);
         if (options.onStderr) options.onStderr(str);
         if (options.stderr) options.stderr.write(chunk);
       });
@@ -717,16 +719,18 @@ export class DockerBackend implements BackendEngine {
           durationMs,
           exitCode,
           timedOut,
+          truncated: stdoutAcc.truncated || stderrAcc.truncated,
           peakMemoryBytes,
         };
 
         resolve({
           id: execId,
           exitCode,
-          stdout: stdoutAcc,
-          stderr: stderrAcc,
+          stdout: stdoutAcc.text(),
+          stderr: stderrAcc.text(),
           durationMs,
           timedOut,
+          truncated: stdoutAcc.truncated || stderrAcc.truncated,
           peakMemoryBytes,
           metadata,
         });

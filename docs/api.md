@@ -207,7 +207,9 @@ Elapsed milliseconds. Live value while running, final value after settled.
 
 ### `execution.stdout()`
 
-Accumulated stdout as a string.
+Retained stdout as a string: at most the last 16 MiB, prefixed with an
+`[output truncated: ...]` marker when bytes were dropped. Use the
+`onStdout` callback or a piped `stdout` stream for complete output.
 
 ```ts
 const out = execution.stdout(); // 'hello\n'
@@ -215,11 +217,11 @@ const out = execution.stdout(); // 'hello\n'
 
 ### `execution.stderr()`
 
-Accumulated stderr as a string.
+Retained stderr as a string, bounded like stdout.
 
 ### `execution.logs()`
 
-`stdout + stderr` concatenated.
+Retained `stdout + retained stderr` concatenated (both bounded).
 
 ### `execution.stdoutStream()`
 
@@ -252,16 +254,21 @@ const meta = execution.metadata();
 //   exitCode: 0,
 //   timedOut: false,
 //   cpuTimeMs: 84.6
+//   peakMemoryBytes: 12345678
+//   truncated: false
 // }
 ```
 
+`truncated` is true once retained output dropped bytes on any stream.
+`cpuTimeMs` and `peakMemoryBytes` are best-effort and may be absent.
+
 ### `execution.result()`
 
-Returns the full `ExecResult` payload after `wait()` resolves. `null` while running. Contains `id`, `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `cpuTimeMs?`, `peakMemoryBytes?`, and `metadata`.
+Returns the full `ExecResult` payload after `wait()` resolves. `null` while running. Contains `id`, `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `truncated`, `cpuTimeMs?`, `peakMemoryBytes?`, and `metadata`.
 
 ```ts
 const result = execution.result();
-console.log(result?.stdout);   // accumulated stdout string
+console.log(result?.stdout);   // retained stdout string (bounded)
 console.log(result?.exitCode); // 0
 ```
 

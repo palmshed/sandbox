@@ -6,6 +6,7 @@ import * as os from 'os';
 import { BackendCapabilities, BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError, SPEC_VERSION } from '../core/types.js';
 import { logDebug } from '../core/log.js';
+import { BoundedOutput } from '../core/retention.js';
 import {
   installCrashHooks,
   uninstallCrashHooks,
@@ -424,8 +425,11 @@ export class NativeBackend implements BackendEngine {
     }
 
     const settlement = new Promise<ExecResult>((resolve, reject) => {
-      let stdoutAcc = '';
-      let stderrAcc = '';
+      // Bounded retention (issue #12): host memory stays flat no matter how
+      // much the workload prints. Callbacks and piped streams below stay
+      // complete; only these retained strings are lossy.
+      const stdoutAcc = new BoundedOutput();
+      const stderrAcc = new BoundedOutput();
       let timedOut = false;
       let oomKilled = false;
       let cpuExceeded = false;
@@ -910,14 +914,14 @@ export class NativeBackend implements BackendEngine {
 
       child.stdout?.on('data', (chunk: Buffer) => {
         const str = chunk.toString();
-        stdoutAcc += str;
+        stdoutAcc.push(str);
         if (options.onStdout) options.onStdout(str);
         if (options.stdout) options.stdout.write(chunk);
       });
 
       child.stderr?.on('data', (chunk: Buffer) => {
         const str = chunk.toString();
-        stderrAcc += str;
+        stderrAcc.push(str);
         if (options.onStderr) options.onStderr(str);
         if (options.stderr) options.stderr.write(chunk);
       });
@@ -1049,6 +1053,7 @@ export class NativeBackend implements BackendEngine {
           durationMs,
           exitCode,
           timedOut,
+          truncated: stdoutAcc.truncated || stderrAcc.truncated,
           signal: terminatedBySignal ? signal : undefined,
           cpuTimeMs: finalCpuTimeMs,
           peakMemoryBytes,
@@ -1066,10 +1071,11 @@ export class NativeBackend implements BackendEngine {
         resolve({
           id: execId,
           exitCode,
-          stdout: stdoutAcc,
-          stderr: stderrAcc,
+          stdout: stdoutAcc.text(),
+          stderr: stderrAcc.text(),
           durationMs,
           timedOut,
+          truncated: stdoutAcc.truncated || stderrAcc.truncated,
           cpuTimeMs: finalCpuTimeMs,
           peakMemoryBytes,
           metadata,

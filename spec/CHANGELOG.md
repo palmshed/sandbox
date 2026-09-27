@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `peakMemoryBytes` optional field on `ExecResult` and `ExecutionMetadata` in `exec.schema.json` (issue `#8`, narrowed scope): peak memory observed during the execution in bytes, best-effort lower bound. Native reports max sampled process-group RSS; Docker reports max sampled container memory usage (container-wide). Absent when no sample succeeded. No behavior change: purely additive, no new capability.
 
+### Changed (behavior note, issue `#12`)
+
+- Retained execution output is now bounded: `ExecResult`/`ExecutionMetadata` carry a required `truncated` boolean, and `stdout`/`stderr` retain at most the last 16 MiB per stream (whole-chunk tail eviction, truncation marker prefix when bytes were dropped). Real-time `onStdout`/`onStderr` callbacks and piped `stdout`/`stderr` streams are unaffected and remain the complete, lossless route to full output. Consumers parsing more than 16 MiB of retained output per stream observe different strings; use the streaming path for complete capture.
+
 ---
 
 ## [1.2.0] - 2026-09-07
