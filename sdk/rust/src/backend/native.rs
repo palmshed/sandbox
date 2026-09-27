@@ -197,8 +197,16 @@ impl NativeBackend {
             .stdin(std::process::Stdio::null());
 
         // Minimal host environment (never inherited wholesale); explicit env overlays it.
+        // The Windows key set mirrors the TypeScript contract: the runtime
+        // needs SystemRoot/ComSpec/UserProfile to load at all (node aborts
+        // without SystemRoot), so dropping them is not a security win.
         cmd.env_clear();
-        for key in ["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL"] {
+        let keys: &[&str] = if cfg!(windows) {
+            &["PATH", "SystemRoot", "ComSpec", "USERPROFILE", "HOMEDRIVE", "HOMEPATH", "TEMP", "TMP", "LANG", "LC_ALL", "LC_CTYPE"]
+        } else {
+            &["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "LC_CTYPE"]
+        };
+        for key in keys {
             if let Ok(v) = std::env::var(key) {
                 cmd.env(key, v);
             }
