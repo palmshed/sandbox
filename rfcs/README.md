@@ -9,3 +9,4 @@ Architectural RFCs document why key design choices and trade-offs were made.
 - `0005-crash-recovery.md`: Crash recovery failure model, guarantees, and reaper design (issue `#10`).
 - `0006-os-filesystem-isolation.md`: OS-level filesystem confinement of the executed process tree (issue `#3`).
 - `0007-cpu-hard-quota.md`: CPU hard quota rate-cap design (contract, capability, platform mapping, failure behavior, test plan). Designed first, then implemented and shipped in spec/SDK 1.2.0 (native Linux cgroups v2, native Windows Job Objects, Docker `--cpus`).
+- `0008-rust-sdk-bindings.md`: Rust SDK binding note for F1 (public surface, TypeScript to Rust mappings, absent/unknown semantics, engine boundary, test strategy). Contract only; no code yet.
