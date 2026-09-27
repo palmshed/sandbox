@@ -1,0 +1,46 @@
+name: Benchmarks (informational)
+
+# Evidence generation only: this workflow measures and uploads benchmark
+# evidence. It never gates, never asserts targets, and never promotes
+# numbers into documentation. See benchmarks/README.md.
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'benchmarks/**'
+      - '.github/workflows/benchmarks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmarks:
+    name: benchmarks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest ]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+
+      - name: Install packed artifact
+        run: |
+          cd sdk/typescript && npm ci && npm run build
+          PACKFILE=$(npm pack --silent | tail -n 1)
+          cd ../.. && npm install --no-save --omit=dev "./sdk/typescript/$PACKFILE"
+
+      - name: Run benchmark harness (native)
+        run: node benchmarks/run.mjs --out bench-evidence.json --verbose
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-evidence-${{ matrix.os }}
+          path: bench-evidence.json

@@ -41,6 +41,9 @@ sandbox/
 │   ├── networking/
 │   └── resources/
 ├── backends/              # Pluggable backend drivers (Native, Docker, Remote Daemon, etc.)
+├── benchmarks/            # Performance evidence harness (informational; never gated, numbers are not promises)
+│   ├── run.mjs            # Metric runner (cold, overhead, parallel, host + JSON evidence)
+│   └── README.md          # Accepted measurement definitions and methodology
 ├── sdk/                   # Language-specific SDKs
 │   ├── typescript/        # Phase 1 Reference TypeScript SDK
 │   │   └── src/osfs/      # RFC 0006 OS-filesystem isolation (embedded Landlock source, allowlist, confinement probe)
