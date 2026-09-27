@@ -185,10 +185,16 @@ async function metricCold() {
     walls.push(Date.now() - t0);
   }
   for (const s of sandboxes) await s.destroy();
-  // Sample 0 is cold-host; samples 5..14 are creates 6-15 (warm-host).
+  // Sample 0 pays one-time process/backend initialization (capability
+  // probes, reaper sweep). Samples 1..4 are create-after-init
+  // (cold-create); samples 5..14 are creates 6-15 (warm-host).
+  // coldInitMs isolates the one-time cost as walls[0] minus cold-create.
+  const coldCreate = stats(walls.slice(1, 5));
   const warm = walls.slice(5);
   return {
-    coldHostMs: walls[0],
+    coldInitMs: Math.max(0, walls[0] - coldCreate.median),
+    coldCreateMs: walls[0],
+    coldCreate,
     warmHost: stats(warm),
     unit: 'ms',
     note: 'create latency only; Docker image pull excluded, image state in fingerprint',
@@ -325,7 +331,7 @@ async function main() {
   const lines = [`backend=${BACKEND} package=${pkg.version} node=${process.version} ${os.platform()}-${os.arch()} cpus=${os.cpus().length}`];
   if (evidence.metrics.cold) {
     const c = evidence.metrics.cold;
-    lines.push(`cold: coldHost=${c.coldHostMs}ms warmMedian=${c.warmHost.median}ms warmP95=${c.warmHost.p95}ms (n=${c.warmHost.n})`);
+    lines.push(`cold: init=${c.coldInitMs}ms create=${c.coldCreateMs}ms warmMedian=${c.warmHost.median}ms warmP95=${c.warmHost.p95}ms (n=${c.warmHost.n})`);
   }
   if (evidence.metrics.overhead) {
     const o = evidence.metrics.overhead;

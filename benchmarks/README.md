@@ -6,18 +6,25 @@ product promises.
 
 ## Definitions (accepted contract)
 
-- **Cold start**: `Sandbox.create()` latency. Sample 0 is cold-host (first
-  create in the process); samples 5..14 are creates 6..15 (warm-host,
-  reported as median/p95/max). Every sample starts from a fresh
-  workspace. Docker image pull is excluded from create latency; image
-  availability and daemon version are recorded in the fingerprint.
-- **Execution overhead**: a fixed deterministic workload (1 KiB write,
-  `node -e` hello exec, read back) run 5 warmups (discarded) plus 15
-  samples inside the sandbox, compared against a semantically equivalent
+- **Cold start**: `Sandbox.create()` latency, split three ways. `coldInitMs`
+  isolates one-time process/backend initialization (capability probes,
+  reaper sweep) as first-create wall minus cold-create median.
+  `coldCreateMs` is the first create (pays init); `coldCreate` (samples
+  2..5 median) is create-after-init; `warmHost` (creates 6..15) is the
+  steady state. Every sample starts from a fresh workspace. Docker image
+  pull is excluded from all three; image availability and daemon version
+  are recorded in the fingerprint.
+- **Execution overhead**: representative workload v1 (fixed and
+  deterministic): 1 KiB VFS write, one `node -e` hello exec, one VFS
+  read-back, exercising process execution plus filesystem activity
+  through the sandbox contract. 5 warmups discarded plus 15 samples
+  inside the sandbox, compared against a semantically equivalent
   baseline (direct fs ops plus a bare child spawn of the same command;
   for Docker, `docker exec` against an equivalent already-running
   container). Raw sandbox and baseline walls are recorded alongside the
-  median ratio so strange percentages can be investigated.
+  median ratio so strange percentages can be investigated. The ratio on
+  this small workload is fixed-cost dominated by design; it measures the
+  sandbox tax on small work, not application overhead at scale.
 - **Parallel capacity**: ramp of concurrently live sandboxes (default
   steps 10, 25, 50, 100 up to `--sandboxes`), each running a small mixed
   workload, then destroyed. Records per-step timings and the highest

@@ -177,11 +177,12 @@ Every guarantee and every reported bug gets a standalone repro (`repro/<area>/*.
 > **Goal**: Enable operators to inspect runtime behavior and rely on predictable performance.
 
 - [x] **Observability**: unique `execution_id`, fine-grained timing metrics, peak resource reporting (`peakMemoryBytes` best-effort on result and metadata; issue `#8` narrowed scope delivered)
-- [ ] **Benchmark Expectations (Target Baselines)**:
-  - Cold startup latency ($<50\text{ms}$ native)
-  - Execution overhead ($<5\%$)
-  - Concurrent sandbox capacity ($100+$ parallel instances without degradation)
-  - Memory overhead per sandbox ($<10\text{MB}$ host overhead)
+- [x] **Benchmark harness** (`benchmarks/`, informational, never gated): cold-init/cold-create/warm-create split, overhead vs a semantically equivalent baseline on representative workload v1, parallel ramp with saturation guardrails and highest-successful-N, per-sandbox host overhead; every result carries a pinned runner fingerprint and no number is a promise until explicitly promoted (see `benchmarks/README.md`)
+- [ ] **Benchmark baselines (targets, awaiting reproducible evidence)**:
+  - Cold create (after init) `<50 ms` native; one-time cold init reported separately with no target
+  - Execution overhead `<5%` on representative workload v1 (raw walls recorded beside the ratio)
+  - Concurrent sandbox capacity (`100+` parallel instances without degradation; highest successful N recorded)
+  - Memory overhead per sandbox (`<10 MB` host overhead, idle sandboxes)
 
 ---
 
