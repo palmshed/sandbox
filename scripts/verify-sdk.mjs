@@ -46,10 +46,19 @@ function main() {
   const test = npmRun(SDK_DIR, 'test', { timeoutMs: 600000 });
   const counts = nodeTestCounts(test.stdout + '\n' + test.stderr);
   const summary = counts && counts.tests != null ? `${counts.pass}/${counts.tests} tests` : 'no test summary';
+  // On failure, surface the failing test names: node --test prints them in
+  // a trailing 'failing tests' section, which is what a triager needs first.
+  let detail = summary;
+  if (!(test.ok && counts?.fail === 0)) {
+    const combined = test.stdout + '\n' + test.stderr;
+    const marker = combined.lastIndexOf('failing tests');
+    const tail = marker === -1 ? combined : combined.slice(marker);
+    detail = `${summary}\n${tail.split('\n').slice(0, 40).join('\n')}`;
+  }
   report.check(
     'SDK unit/integration/stress tests',
     test.ok && counts?.fail === 0,
-    summary
+    detail
   );
 
   process.exit(report.finish());

@@ -80,6 +80,35 @@ function readWindowsProcessTable(
   return procs;
 }
 
+/** Sum RSS across the process tree rooted at rootPid (0 when absent). */
+function sumTreeRss(
+  procs: Map<number, { ppid: number; value: number }>,
+  rootPid: number
+): number {
+  let total = 0;
+  const visited = new Set<number>();
+  const queue = [rootPid];
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+    const p = procs.get(current);
+    if (!p) continue;
+    total += p.value;
+    for (const [childPid, child] of procs) {
+      if (child.ppid === current && !visited.has(childPid)) queue.push(childPid);
+    }
+  }
+  return total;
+}
+
+/**
+ * Shared peak-only Windows process table (see samplePeakOnlyRssBytes).
+ * Module scope so concurrent executions in one host share snapshots.
+ */
+let peakTableAtMs = 0;
+let peakTable: Map<number, { ppid: number; value: number }> | null = null;
+
 export class NativeBackend implements BackendEngine {
   public readonly name = 'native';
   public readonly capabilities: BackendCapabilities = {
@@ -507,24 +536,28 @@ export class NativeBackend implements BackendEngine {
           // can escape accounting. Documented platform limitation.
           const procs = readWindowsProcessTable('WorkingSetSize', false);
           if (!procs) return -1;
-          // BFS from the root PID summing RSS across the process tree
-          let total = 0;
-          const visited = new Set<number>();
-          const queue = [rootPid];
-          while (queue.length) {
-            const current = queue.shift()!;
-            if (visited.has(current)) continue;
-            visited.add(current);
-            const p = procs.get(current);
-            if (!p) continue;
-            total += p.value;
-            for (const [childPid, child] of procs) {
-              if (child.ppid === current && !visited.has(childPid)) queue.push(childPid);
-            }
-          }
-          return total;
+          return sumTreeRss(procs, rootPid);
         }
         return -1;
+      };
+
+      /**
+       * Peak-only RSS sampling for executions without a memory limit. On
+       * Linux/macOS this is the same cheap sampler; on Windows the CIM table
+       * spawn is slow and synchronous, so concurrent unenforced executions
+       * share one table per second instead of each spawning PowerShell per
+       * sample. Enforcement (limit set) always samples directly and is
+       * unaffected.
+       */
+      const samplePeakOnlyRssBytes = (rootPid: number): number => {
+        if (process.platform !== 'win32') return sampleGroupRssBytes(rootPid);
+        const now = Date.now();
+        if (peakTable === null || now - peakTableAtMs >= 1000) {
+          peakTable = readWindowsProcessTable('WorkingSetSize', false);
+          peakTableAtMs = now;
+        }
+        if (!peakTable) return -1;
+        return sumTreeRss(peakTable, rootPid);
       };
 
       const isWin = process.platform === 'win32';
@@ -847,7 +880,7 @@ export class NativeBackend implements BackendEngine {
         if (!enforcing) {
           // Synchronous baseline so short-lived unenforced executions still
           // report a peak instead of missing every sample interval.
-          const baseline = sampleGroupRssBytes(monitoredRootPid);
+          const baseline = samplePeakOnlyRssBytes(monitoredRootPid);
           if (baseline > 0) peakMemoryBytes = baseline;
         }
         memPoller = setInterval(() => {
@@ -855,7 +888,9 @@ export class NativeBackend implements BackendEngine {
             clearInterval(memPoller!);
             return;
           }
-          const rss = sampleGroupRssBytes(monitoredRootPid);
+          const rss = enforcing
+            ? sampleGroupRssBytes(monitoredRootPid)
+            : samplePeakOnlyRssBytes(monitoredRootPid);
           if (rss === -1) return; // process group already gone
           if (rss > 0 && (peakMemoryBytes === undefined || rss > peakMemoryBytes)) {
             peakMemoryBytes = rss;
