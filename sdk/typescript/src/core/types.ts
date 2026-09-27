@@ -96,6 +96,15 @@ export interface ExecutionMetadata {
   timedOut: boolean;
   /** Total CPU time consumed by the process group in ms (best-effort) */
   cpuTimeMs?: number;
+  /**
+   * Peak memory observed during the execution in bytes (best-effort lower
+   * bound). Native reports the maximum sampled process-group RSS; Docker
+   * reports the maximum sampled container memory usage (container-wide, so
+   * concurrent executions in one container share the reading). Sampling is
+   * periodic, so spikes shorter than the sample interval may be missed.
+   * Absent when no sample succeeded.
+   */
+  peakMemoryBytes?: number;
 }
 
 export interface ExecResult {
@@ -113,6 +122,12 @@ export interface ExecResult {
   timedOut: boolean;
   /** Total CPU time consumed by the process group in ms (best-effort) */
   cpuTimeMs?: number;
+  /**
+   * Peak memory observed during the execution in bytes (best-effort lower
+   * bound; see ExecutionMetadata for boundary semantics). Absent when no
+   * sample succeeded.
+   */
+  peakMemoryBytes?: number;
   /** Structured execution metadata */
   metadata: ExecutionMetadata;
 }

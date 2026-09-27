@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
@@ -358,7 +358,9 @@ export class DockerBackend implements BackendEngine {
     }
     args.push(this.containerId, 'sh', '-c', finalCommand);
 
-    const result = await this.runDockerCmd(args, options);
+    // Peak memory is tracked for workload executions only (container-wide,
+    // 1s granularity); internal CLI calls (cat/cp/update) skip sampling.
+    const result = await this.runDockerCmd(args, options, true);
     if (result.timedOut) return result;
 
     // Daemon loss surfaces as INVALID_BACKEND, not as a workload outcome:
@@ -519,6 +521,44 @@ export class DockerBackend implements BackendEngine {
     return this.readOomKilled();
   }
 
+  /**
+   * Sample current container memory usage in bytes (best-effort). Returns
+   * undefined when the daemon is unreachable or the output is unparsable;
+   * callers treat that as a missed sample, never a failure. Container-wide
+   * by nature: concurrent executions in one container share the reading.
+   */
+  private sampleContainerMemUsageBytes(): number | undefined {
+    try {
+      const res = spawnSync('docker', ['stats', '--no-stream', '--format', '{{.MemUsage}}', this.containerId], {
+        encoding: 'utf8',
+        timeout: 10000,
+      });
+      if (res.status !== 0 || typeof res.stdout !== 'string') return undefined;
+      // Format: "5.23MiB / 7.667GiB" (used part first).
+      const used = res.stdout.split('/')[0]?.trim() ?? '';
+      const match = used.match(/^([\d.]+)\s*([KMGT]?i?B)$/i);
+      if (!match) return undefined;
+      const num = parseFloat(match[1]);
+      if (!Number.isFinite(num)) return undefined;
+      const unit = match[2].toUpperCase();
+      const multipliers: Record<string, number> = {
+        B: 1,
+        KB: 1024,
+        KIB: 1024,
+        MB: 1024 * 1024,
+        MIB: 1024 * 1024,
+        GB: 1024 * 1024 * 1024,
+        GIB: 1024 * 1024 * 1024,
+        TB: 1024 * 1024 * 1024 * 1024,
+        TIB: 1024 * 1024 * 1024 * 1024,
+      };
+      const mult = multipliers[unit];
+      return mult === undefined ? undefined : Math.floor(num * mult);
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Size strings use the native backend semantics (default unit MB, 100MB fallback). */
   private static parseSizeStringToBytes(sizeStr: string): number {
     const match = sizeStr.trim().match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)?$/);
@@ -586,7 +626,7 @@ export class DockerBackend implements BackendEngine {
     logDebug('backend.destroy', { backend: this.name });
   }
 
-  private runDockerCmd(args: string[], options: ExecOptions = {}): Promise<ExecResult> {
+  private runDockerCmd(args: string[], options: ExecOptions = {}, trackPeak = false): Promise<ExecResult> {
     const startTime = Date.now();
     const timeout = options.timeout ?? this.options?.timeout ?? 0;
 
@@ -595,8 +635,25 @@ export class DockerBackend implements BackendEngine {
       let stderrAcc = '';
       let timedOut = false;
       let timer: NodeJS.Timeout | null = null;
+      // Peak container memory usage in bytes across a workload execution.
+      // Container-wide and 1s-granularity by nature (see sampler); undefined
+      // when no sample succeeded. Only tracked for workload execs, never for
+      // internal CLI calls (cat/cp/update/stats).
+      let peakMemoryBytes: number | undefined;
+      let peakPoller: NodeJS.Timeout | null = null;
 
       const child = spawn('docker', args);
+
+      if (trackPeak) {
+        const sample = this.sampleContainerMemUsageBytes();
+        if (sample !== undefined) peakMemoryBytes = sample;
+        peakPoller = setInterval(() => {
+          const sample = this.sampleContainerMemUsageBytes();
+          if (sample !== undefined && (peakMemoryBytes === undefined || sample > peakMemoryBytes)) {
+            peakMemoryBytes = sample;
+          }
+        }, 1000);
+      }
 
       if (options.stdin && child.stdin) {
         options.stdin.pipe(child.stdin);
@@ -625,11 +682,19 @@ export class DockerBackend implements BackendEngine {
 
       child.on('error', (err) => {
         if (timer) clearTimeout(timer);
+        if (peakPoller) clearInterval(peakPoller);
         reject(new SandboxError(`Docker CLI error: ${err.message}`, 'INVALID_BACKEND', err));
       });
 
       child.on('close', (code) => {
         if (timer) clearTimeout(timer);
+        if (peakPoller) clearInterval(peakPoller);
+        if (trackPeak) {
+          const sample = this.sampleContainerMemUsageBytes();
+          if (sample !== undefined && (peakMemoryBytes === undefined || sample > peakMemoryBytes)) {
+            peakMemoryBytes = sample;
+          }
+        }
         const finishedAtMs = Date.now();
         const durationMs = finishedAtMs - startTime;
         const execId = `exec_${Math.random().toString(36).substring(2, 10)}`;
@@ -640,6 +705,7 @@ export class DockerBackend implements BackendEngine {
           exitCode,
           durationMs,
           timedOut,
+          peakMemoryBytes: peakMemoryBytes ?? null,
         });
 
         const metadata = {
@@ -651,6 +717,7 @@ export class DockerBackend implements BackendEngine {
           durationMs,
           exitCode,
           timedOut,
+          peakMemoryBytes,
         };
 
         resolve({
@@ -660,6 +727,7 @@ export class DockerBackend implements BackendEngine {
           stderr: stderrAcc,
           durationMs,
           timedOut,
+          peakMemoryBytes,
           metadata,
         });
       });

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- `peakMemoryBytes` optional field on `ExecResult` and `ExecutionMetadata` in `exec.schema.json` (issue `#8`, narrowed scope): peak memory observed during the execution in bytes, best-effort lower bound. Native reports max sampled process-group RSS; Docker reports max sampled container memory usage (container-wide). Absent when no sample succeeded. No behavior change: purely additive, no new capability.
+
+---
+
 ## [1.2.0] - 2026-09-07
 
 ### Added (optional extension to the frozen 1.0.0 contract)

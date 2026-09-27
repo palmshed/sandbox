@@ -437,6 +437,9 @@ export class NativeBackend implements BackendEngine {
       let measuringDisk = false;
       let settled = false;
       let finalCpuTimeMs: number | undefined;
+      // Peak process-group RSS in bytes across the execution lifetime
+      // (best-effort lower bound; sampling misses sub-interval spikes).
+      let peakMemoryBytes: number | undefined;
 
       /**
        * Sample the total RSS of a process group/tree in bytes, cross-platform.
@@ -829,12 +832,17 @@ export class NativeBackend implements BackendEngine {
         }, timeout);
       }
 
-      // RSS-polling memory enforcement (100ms interval). Samples the entire
+      // RSS-polling memory sampler (100ms interval). Samples the entire
       // process group/tree so descendant workloads (pipelines, background jobs,
-      // chained sh -c children) are counted against the limit, not just the
-      // top-level shell process.
-      if (memLimitBytes !== null && child.pid !== undefined) {
+      // chained sh -c children) are counted, not just the top-level shell
+      // process. Runs on every execution (not only under a limit) so the peak
+      // can be reported; enforcement below still applies only when configured.
+      if (child.pid !== undefined) {
         const monitoredRootPid = child.pid;
+        // Synchronous baseline so short-lived executions still report a
+        // peak instead of missing every sample interval.
+        const baseline = sampleGroupRssBytes(monitoredRootPid);
+        if (baseline > 0) peakMemoryBytes = baseline;
         memPoller = setInterval(() => {
           if (settled) {
             clearInterval(memPoller!);
@@ -842,7 +850,10 @@ export class NativeBackend implements BackendEngine {
           }
           const rss = sampleGroupRssBytes(monitoredRootPid);
           if (rss === -1) return; // process group already gone
-          if (rss > memLimitBytes) {
+          if (rss > 0 && (peakMemoryBytes === undefined || rss > peakMemoryBytes)) {
+            peakMemoryBytes = rss;
+          }
+          if (memLimitBytes !== null && rss > memLimitBytes) {
             oomKilled = true;
             clearInterval(memPoller!);
             killProcess('SIGKILL');
@@ -1040,6 +1051,7 @@ export class NativeBackend implements BackendEngine {
           timedOut,
           signal: terminatedBySignal ? signal : undefined,
           cpuTimeMs: finalCpuTimeMs,
+          peakMemoryBytes,
         };
 
         logDebug('exec.end', {
@@ -1048,6 +1060,7 @@ export class NativeBackend implements BackendEngine {
           durationMs,
           timedOut,
           cpuTimeMs: finalCpuTimeMs ?? null,
+          peakMemoryBytes: peakMemoryBytes ?? null,
         });
 
         resolve({
@@ -1058,6 +1071,7 @@ export class NativeBackend implements BackendEngine {
           durationMs,
           timedOut,
           cpuTimeMs: finalCpuTimeMs,
+          peakMemoryBytes,
           metadata,
         });
       });

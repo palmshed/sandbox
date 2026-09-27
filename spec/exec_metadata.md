@@ -15,6 +15,16 @@ Every process execution inside Palmshed Sandbox returns structured metadata:
 }
 ```
 
+Optional best-effort fields may also be present: `cpuTimeMs` (total CPU
+time of the process group in ms) and `peakMemoryBytes` (peak memory
+observed during the execution in bytes). `peakMemoryBytes` is a lower
+bound, not an exact maximum: Native reports the maximum sampled
+process-group RSS (100 ms samples, so sub-interval spikes can be
+missed); Docker reports the maximum sampled container memory usage
+(1 s samples, container-wide, so concurrent executions in one container
+share the reading). The field is absent when no sample succeeded (for
+example, an execution shorter than the first sample).
+
 ## First-Class Execution Object Interface
 
 Rather than returning a raw result object, `sandbox.exec()` returns an `Execution` object handle:

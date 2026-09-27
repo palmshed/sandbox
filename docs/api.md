@@ -257,7 +257,7 @@ const meta = execution.metadata();
 
 ### `execution.result()`
 
-Returns the full `ExecResult` payload after `wait()` resolves. `null` while running. Contains `id`, `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `cpuTimeMs?`, and `metadata`.
+Returns the full `ExecResult` payload after `wait()` resolves. `null` while running. Contains `id`, `exitCode`, `stdout`, `stderr`, `durationMs`, `timedOut`, `cpuTimeMs?`, `peakMemoryBytes?`, and `metadata`.
 
 ```ts
 const result = execution.result();
@@ -366,7 +366,7 @@ console.log(execution.status());      // 'failed'
 //   code: 'ERR_CPU_EXCEEDED', resource: 'cpu', recoverable: true
 ```
 
-After a CPU-limit kill the sandbox remains usable; a workload may run again immediately. `cpuTimeMs` in `metadata()`/`result()` reports best-effort CPU time.
+After a CPU-limit kill the sandbox remains usable; a workload may run again immediately. `cpuTimeMs` in `metadata()`/`result()` reports best-effort CPU time. `peakMemoryBytes` in `metadata()`/`result()` reports the best-effort lower bound on peak memory in bytes (Native: max sampled process-group RSS; Docker: max sampled container memory usage, container-wide). The field is absent when no sample succeeded.
 
 ---
 

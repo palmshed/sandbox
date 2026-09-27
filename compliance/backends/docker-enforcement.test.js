@@ -188,3 +188,30 @@ test('Docker backend parity: resource and network enforcement (item #4)', async 
     }
   });
 });
+
+test('Docker backend: peak memory reporting (issue #8)', async (t) => {
+  if (!dockerLinuxAvailable()) {
+    return t.skip('no Linux Docker daemon on this host; peak sampling needs a live Linux container');
+  }
+
+  await t.test('reports a container-wide peak covering a sustained allocation', async () => {
+    const sandbox = await Sandbox.create({ backend: 'docker', timeout: 120000 });
+    t.after(async () => {
+      await sandbox.destroy();
+    });
+    // Hold ~100MB past the 1s stats interval so at least one periodic
+    // sample observes it. Container-wide by nature: the peak covers the
+    // whole container, not just this exec.
+    const execution = await sandbox.exec(
+      `node -e "const chunks = []; for (let i = 0; i < 100; i++) { const b = Buffer.alloc(1024*1024); b.fill(i % 256); chunks.push(b); } setTimeout(() => {}, 3000);"`
+    );
+    await execution.wait();
+    assert.equal(execution.status(), 'completed');
+    const peak = execution.metadata().peakMemoryBytes;
+    assert.ok(
+      peak !== undefined && peak >= 50 * 1024 * 1024,
+      `expected a container peak covering the allocation, got ${peak}`
+    );
+    assert.equal(execution.result().peakMemoryBytes, peak);
+  });
+});

@@ -66,6 +66,10 @@
           "type": "number",
           "description": "Total CPU time consumed by the execution process group in milliseconds (best-effort reporting)"
         },
+        "peakMemoryBytes": {
+          "type": "number",
+          "description": "Peak memory observed during the execution in bytes (best-effort lower bound; native reports max process-group RSS, Docker reports max container memory usage)"
+        },
         "metadata": {
           "$ref": "#/definitions/ExecutionMetadata"
         }
@@ -105,6 +109,10 @@
         "cpuTimeMs": {
           "type": "number",
           "description": "Total CPU time consumed by the execution process group in ms (best-effort)"
+        },
+        "peakMemoryBytes": {
+          "type": "number",
+          "description": "Peak memory observed during the execution in bytes (best-effort lower bound; absent when no sample succeeded)"
         }
       },
       "additionalProperties": false
