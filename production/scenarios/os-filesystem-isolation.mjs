@@ -6,7 +6,7 @@
  * workloads that must SUCCEED, and full health/residue discipline. This scenario
  * asserts the real Native path is confined, not just that the probe passes.
  *
- * On hosts where the mechanism is not supported (non-Linux, pre-5.13 kernel,
+ * On hosts where the mechanism is not supported (no Landlock/Seatbelt,
  * restricted user namespaces), the scenario skips rather than asserting on
  * ambient-rights behavior; `osFilesystemIsolation: 'supported'` is a strong
  * claim and must only be exercised where the kernel actually provides it.
@@ -22,7 +22,7 @@ export default {
     await probeBox.destroy();
     ctx.untrack(probeBox);
     if (cap !== 'supported') {
-      return ctx.log(`osFilesystemIsolation=${cap} on ${ctx.platform}; RFC 0006 scenario skipped (expected on non-Linux / unsupported kernels)`);
+      return ctx.log(`osFilesystemIsolation=${cap} on ${ctx.platform}; RFC 0006 scenario skipped (expected where the mechanism is unavailable)`);
     }
 
     const baseline = ctx.scanResidue();
@@ -78,7 +78,7 @@ export default {
       await wsWrite.wait();
       ctx.assert.equal(wsWrite.exitCode, 0, 'G7: workspace write must succeed');
 
-      const prod = await sandbox.exec('node artifact.txt', { timeout: 5000 });
+      const prod = await sandbox.exec('node -e "process.stdout.write(require(\'fs\').readFileSync(\'artifact.txt\',\'utf8\'))"', { timeout: 5000 });
       await prod.wait();
       ctx.assert.equal(prod.exitCode, 0, 'G7: workspace-heavy workload must succeed');
       ctx.assert.match(r(prod), /built-in-workspace/);

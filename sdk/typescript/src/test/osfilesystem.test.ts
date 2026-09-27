@@ -2,27 +2,36 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as os from 'os';
 import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
 import { Sandbox } from '../index.js';
 
 /**
  * RFC 0006 adversarial escape suite (E1-E10 / G1-G8).
  *
  * These tests exercise the Native backend's OS-level filesystem isolation
- * (Landlock confinement runner) end-to-end through the real `Sandbox` API,
- * not the probe. They are gated on the capability reporting `supported`:
- * if the mechanism is unavailable on this host/kernel (pre-5.13, no Landlock,
- * restricted user namespaces, or an unprobed platform), they skip rather than
- * assert on ambient-rights behavior.
+ * end-to-end through the real `Sandbox` API, not the probe. On Linux the
+ * mechanism is the Landlock confinement runner; on macOS it is a Seatbelt
+ * profile via sandbox-exec (allow-default with targeted denies). They are
+ * gated on the capability reporting `supported`: if the mechanism is
+ * unavailable on this host/kernel (pre-5.13, no Landlock, restricted user
+ * namespaces, unprobed Seatbelt, or an unsupported platform), they skip
+ * rather than assert on ambient-rights behavior.
  *
  * Each escape attempt asserts the attempt FAILS while the sandbox stays
  * healthy and reusable (RFC 0006 adversarial plan item 14).
  */
 async function skipUnlessSupported(): Promise<{ skip: boolean; message: string }> {
-  if (process.platform !== 'linux') {
-    return { skip: true, message: 'OS-filesystem isolation is Linux-only (RFC 0006)' };
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
+    return { skip: true, message: 'OS-filesystem isolation is Linux/macOS-only (RFC 0006)' };
   }
   return { skip: false, message: '' };
 }
+
+const isMac = process.platform === 'darwin';
+// macOS counterparts for Linux-only fixture paths (chosen to exist on a
+// stock macOS so denials assert the mechanism, not ENOENT).
+const SHADOW_PATH = isMac ? '/etc/passwd' : '/etc/shadow';
+const HOSTNAME_PATH = isMac ? '/etc/hosts' : '/etc/hostname';
 
 test('RFC 0006 OS-filesystem isolation escape suite', async (t) => {
   const env = await skipUnlessSupported();
@@ -111,7 +120,7 @@ test('RFC 0006 OS-filesystem isolation escape suite', async (t) => {
   // E7/G5: a subprocess spawned by the workload is equally confined. node is
   // allowlisted, so spawning node as a child must still be denied the read.
   await t.test('E7: subprocess (node child) inherits the confinement', async () => {
-    const childScript = `require('fs').readFileSync('/etc/shadow')`;
+    const childScript = `require('fs').readFileSync('${SHADOW_PATH}')`;
     const exec = await sandbox.exec(
       `node -e "require('child_process').execFileSync('node',['-e',${JSON.stringify(childScript)}],{stdio:'inherit'})"`
     );
@@ -133,7 +142,7 @@ test('RFC 0006 OS-filesystem isolation escape suite', async (t) => {
 
   // E10/G5: absolute path access through the interpreter is denied.
   await t.test('E10: absolute host path read via node is denied', async () => {
-    const exec = await sandbox.exec(nodeRead('/etc/hostname'));
+    const exec = await sandbox.exec(nodeRead(HOSTNAME_PATH));
     await exec.wait();
     failed(exec);
   });
@@ -170,8 +179,10 @@ test('RFC 0006 OS-filesystem isolation escape suite', async (t) => {
 
   // E9/E5 (declared residual on Linux): /proc reads may remain visible because
   // Landlock is path-based and does not manage procfs. Record the residual
-  // without pretending the attempt failed.
+  // without pretending the attempt failed. No /proc exists on macOS, so the
+  // test skips there (the /dev readability residual is covered by G7 below).
   await t.test('E9/E5: /proc read residual is declared, not asserted', async () => {
+    if (isMac) return t.skip('no /proc on macOS');
     const exec = await sandbox.exec('node -e "try{process.stdout.write(require(\'fs\').readFileSync(\'/proc/self/environ\',\'utf8\').length+\'\')}catch(e){process.stdout.write(\'denied\')}"');
     await exec.wait();
     // Both outcomes are acceptable and documented: `denied` is the strongest
@@ -188,6 +199,42 @@ test('RFC 0006 OS-filesystem isolation escape suite', async (t) => {
     );
     await exec.wait();
     failed(exec);
+  });
+
+  // macOS-only: sensitive $HOME reads are denied while ordinary dotfiles
+  // stay readable (deliberate tuning; the readability is a declared macOS
+  // residual, locked here so it cannot silently widen into the denied set
+  // nor silently tighten and break npm/git operation).
+  await t.test('macOS: sensitive $HOME read is denied (skips when absent on host)', async () => {
+    if (!isMac) return t.skip('macOS Seatbelt tuning only');
+    const candidates = ['.ssh', '.aws', '.gnupg'].map((d) => `${os.homedir()}/${d}`);
+    const existing = candidates.find((p) => {
+      try {
+        fsSync.statSync(p);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (!existing) return t.skip('no sensitive $HOME dir on this host');
+    const exec = await sandbox.exec(nodeRead(existing));
+    await exec.wait();
+    failed(exec);
+  });
+
+  await t.test('macOS: foreign tmp sibling read is denied', async () => {
+    if (!isMac) return t.skip('macOS Seatbelt tuning only');
+    // Planted from the host side (outside confinement) so the read attempt
+    // tests the mechanism, not file existence.
+    const sibling = `/private/tmp/palmshed-osfs-sibling-${Date.now()}.txt`;
+    await fs.writeFile(sibling, 'sibling-secret');
+    try {
+      const exec = await sandbox.exec(nodeRead(sibling));
+      await exec.wait();
+      failed(exec);
+    } finally {
+      await fs.rm(sibling, { force: true });
+    }
   });
 
   // RFC adversarial plan item 14: after all failed attempts the sandbox is

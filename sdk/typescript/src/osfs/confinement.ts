@@ -3,7 +3,8 @@
  *
  * RFC 0006 OS-level filesystem isolation: compiles the Landlock confinement
  * trampoline, derives the runtime allowlist, and probes the real mechanism on
- * this host. The result is a tri-state capability:
+ * this host (Linux). On macOS the probe validates a Seatbelt profile via
+ * sandbox-exec instead (see seatbelt.ts). The result is a tri-state capability:
  *
  *   supported   the trampoline compiled, the allowlist derived, and a real
  *               confined self-test passed (shell + node run inside the
@@ -29,6 +30,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { LANDLOCK_RUN_C } from './landlockRunnerSource.js';
 import { deriveRuntimeAllowlist, defaultRuntimeBins } from './allowlist.js';
+import { selfTestSeatbelt } from './seatbelt.js';
 
 export type OsFilesystemIsolationStatus = 'supported' | 'unsupported' | 'unknown';
 
@@ -187,12 +189,17 @@ export function probeOsFilesystemIsolation(): OsFilesystemProbe {
   if (probeCache) return probeCache;
 
   if (process.platform !== 'linux') {
-    // macOS: Seatbelt filesystem profile is a pending candidate, not an
-    // enforced guarantee, so there is no definitive answer yet (unknown).
+    // macOS: Seatbelt filesystem profile via sandbox-exec, validated by a
+    // real confined self-test (shell + node run, outside read denied).
     // Windows: no unprivileged native mechanism (unsupported).
-    probeCache = process.platform === 'darwin'
-      ? { status: 'unknown', reason: 'macOS Seatbelt filesystem profile is pending validation (RFC 0006)' }
-      : { status: 'unsupported', reason: `no OS-filesystem isolation on ${process.platform} (RFC 0006)` };
+    if (process.platform === 'darwin') {
+      const test = selfTestSeatbelt();
+      probeCache = test.ok
+        ? { status: 'supported', reason: test.detail }
+        : { status: 'unknown', reason: test.detail };
+      return probeCache;
+    }
+    probeCache = { status: 'unsupported', reason: `no OS-filesystem isolation on ${process.platform} (RFC 0006)` };
     return probeCache;
   }
 

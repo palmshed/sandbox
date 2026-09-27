@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `peakMemoryBytes` optional field on `ExecResult` and `ExecutionMetadata` in `exec.schema.json` (issue `#8`, narrowed scope): peak memory observed during the execution in bytes, best-effort lower bound. Native reports max sampled process-group RSS; Docker reports max sampled container memory usage (container-wide). Absent when no sample succeeded. No behavior change: purely additive, no new capability.
+- macOS Seatbelt confinement for `osFilesystemIsolation` (RFC 0006): the Native backend routes exec through `sandbox-exec` with an allow-default/targeted-deny Seatbelt profile on macOS once the probe passes, so the existing capability may now report `supported` there (Linux behavior unchanged). No schema change: the tri-state reporting contract already covers this.
 
 ### Changed (behavior note, issue `#12`)
 

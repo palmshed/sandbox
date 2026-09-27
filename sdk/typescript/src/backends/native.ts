@@ -7,6 +7,7 @@ import { BackendCapabilities, BackendEngine } from './interface.js';
 import { ExecOptions, ExecResult, SandboxError, SandboxOptions, SandboxResourceError, SPEC_VERSION } from '../core/types.js';
 import { logDebug } from '../core/log.js';
 import { BoundedOutput } from '../core/retention.js';
+import { buildSeatbeltProfile } from '../osfs/seatbelt.js';
 import {
   installCrashHooks,
   uninstallCrashHooks,
@@ -238,14 +239,12 @@ export class NativeBackend implements BackendEngine {
 
     // RFC 0006: probe OS-level filesystem isolation. On Linux this compiles the
     // embedded Landlock trampoline, derives a runtime allowlist, and runs a
-    // real confined self-test, yielding a tri-state result. Other platforms are
-    // reported without a probe: macOS -> unknown (Seatbelt pending validation),
+    // real confined self-test, yielding a tri-state result. On macOS the
+    // probe validates a Seatbelt profile via sandbox-exec the same way.
     // Windows/others -> unsupported.
-    if (process.platform === 'linux') {
+    if (process.platform === 'linux' || process.platform === 'darwin') {
       this.osfs = probeOsFilesystemIsolation();
       this.capabilities.osFilesystemIsolation = this.osfs.status;
-    } else if (process.platform === 'darwin') {
-      this.capabilities.osFilesystemIsolation = 'unknown';
     } else {
       this.capabilities.osFilesystemIsolation = 'unsupported';
     }
@@ -701,6 +700,17 @@ export class NativeBackend implements BackendEngine {
         this.osfs.runnerPath !== undefined &&
         this.osfs.allowlistFile !== undefined;
 
+      // RFC 0006 macOS: Seatbelt filesystem confinement via sandbox-exec.
+      // Enabled under the same gate as Landlock (probe reported `supported`,
+      // no opt-out). The profile is allow-default with targeted denies plus
+      // the workspace re-allow (deny-default aborts processes inside dyld
+      // load); network denial merges into the same profile when requested.
+      const seatbeltConfined =
+        process.platform === 'darwin' &&
+        this.capabilities.osFilesystemIsolation === 'supported' &&
+        this.options.osFilesystemIsolation !== false &&
+        this.osfs !== null;
+
       if (osfsConfined) {
         const networkFlag =
           this.options.network === 'disabled' && this.networkIsolationAvailable ? ['-n'] : [];
@@ -718,6 +728,14 @@ export class NativeBackend implements BackendEngine {
           '-c',
           effectiveCommand,
         ];
+      } else if (seatbeltConfined) {
+        const profile = buildSeatbeltProfile(
+          this.sandboxRealDir,
+          os.homedir(),
+          this.options.network === 'disabled'
+        );
+        spawnShell = '/usr/bin/sandbox-exec';
+        spawnArgs = ['-p', profile, shell, shellFlag, command];
       } else if (this.options.network === 'disabled') {
         if (process.platform === 'linux') {
           if (this.networkIsolationAvailable) {

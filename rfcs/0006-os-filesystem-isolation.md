@@ -1,7 +1,7 @@
 # RFC 0006: OS-Level Filesystem Isolation
 
 - **Author**: Palmshed Team
-- **Status**: Implemented for Linux (capability probe + Native backend confinement + escape suite; full suite 59/59 and escape suite 15/15 under confinement on Ubuntu 24.04 kernel 6.8.0, Landlock ABI 4). Platform coverage is **Linux-only for v1.0** by decision: macOS is deferred as a post-v1.0 follow-up (Seatbelt filesystem profile, see "Platform Strategy"); Windows is `unsupported` with the technical rationale recorded (see "Windows"). `supported` is only ever reported at runtime on hosts where the mechanism passes the adversarial tests
+- **Status**: Implemented for Linux (capability probe + Native backend confinement + escape suite; full suite 59/59 and escape suite 15/15 under confinement on Ubuntu 24.04 kernel 6.8.0, Landlock ABI 4) and macOS (Seatbelt profile via sandbox-exec, allow-default with targeted denies; full E1-E10 escape suite green on macOS 27). Windows is `unsupported` with the technical rationale recorded (see "Windows"). `supported` is only ever reported at runtime on hosts where the mechanism passes the adversarial tests
 - **Created**: 2026-08-09
 - **Specifies**: new capability `osFilesystemIsolation` (`spec/capabilities.schema.json`); interacts with the existing VFS boundary (RFC 0003) and `network: 'disabled'` (RFC 0004)
 
@@ -128,14 +128,16 @@ Same discipline as RFC 0004: investigate, probe, then decide. No pretending equi
 - **seccomp alone**: filters syscalls, not paths; cannot express "deny `/etc`". Rejected as the mechanism (could be a defense-in-depth layer later).
 - **`firejail`**: external system dependency; the runtime targets zero system dependencies. Rejected for now (matches RFC 0004).
 
-### macOS: Seatbelt (post-v1.0 follow-up, not promised)
+### macOS: Seatbelt (implemented)
 
-**Candidate: Seatbelt profile via `sandbox-exec`** (the same mechanism RFC 0004 already proven for network isolation). **Decision (2026-08-10): recorded as a post-v1.0 follow-up. The capability remains `unknown` on macOS and this RFC promises no support.**
+**Seatbelt profile via `sandbox-exec`** (the same mechanism RFC 0004 uses for network isolation). Implemented and validated on macOS: the capability reports `supported` after the probe passes.
 
-- **Feasibility**: Seatbelt supports filesystem filters (`(deny file-read*)` / `(allow file-read* (subpath "/usr"))` etc.), which is exactly the allowlist/denylist structure we need for G1-G3. It is applied per-process, inherited by descendants, and unprivileged.
-- **Precedent**: RFC 0004 already uses `sandbox-exec` in production for `network: 'disabled'`; applying a filesystem profile is the same API. The `nono` tooling uses Seatbelt for macOS filesystem sandboxing.
-- **Caveats/risks**: `sandbox-exec` is deprecated by Apple and could break on a future macOS; Seatbelt profiles are additive and a `(deny default)` profile must still allow the essential exec/read paths for the runtime allowlist. The macOS filesystem rules cannot hide `/proc` (no `/proc` on macOS) but `/dev` and other pseudo-filesystems are accessible to the host user; declared residual.
-- **Why deferred**: the Linux-only v1.0 position keeps the security guarantee honest. If someone later implements the Seatbelt filesystem profile and the full E1-E10 adversarial suite passes on macOS CI, the additive capability can simply become `supported` there without a spec change. Until then, macOS reports `unknown` and callers must not build security policy on it.
+- **Architecture**: allow-default with targeted denies, NOT deny-default with an allowlist. A deny-default profile aborts processes inside dyld load (the shared-cache closure lives scattered across Cryptexes paths with zero diagnostics); targeted denies enforce cleanly with EPERM failures. Seatbelt rules are last-match-wins, so each broad denial is followed by the narrow workspace re-allow. Filters match resolved vnode paths, so symlink escapes into denied subtrees are denied; confinement is inherited by descendants.
+- **Ancestors**: runtimes lstat ancestor dirs at startup (TMPDIR resolution), so every ancestor of the workspace up to `/` is granted a read literal (sibling names visible, sibling contents still denied), mirroring the Linux traction-dir grants. `/etc` and `/tmp` themselves are never literal-allowed, so those denials keep biting.
+- **HOME tuning**: reads stay allowed except sensitive subpaths (`.ssh`, `.aws`, `.gnupg`, `.docker`, `.kube`, `.azure`, gcloud config) so ordinary npm/git dotfile reads keep working; writes to `$HOME` are denied wholesale (matching Linux strictness). Readable ordinary dotfiles are a declared macOS residual, locked by test.
+- **FD inheritance**: same SDK-side handling as Linux (no out-of-tree FDs at spawn); Seatbelt cannot revoke pre-opened FDs, same residual class as Landlock E4.
+- **Deprecation risk**: `sandbox-exec` is deprecated by Apple but present and enforcing on macOS 27; the probe degrades to `unknown` if the binary disappears, so removal can never silently unconfine.
+- **Validation**: full E1-E10 escape suite green on macOS (E9 /proc skipped: no /proc; E7/E10 use /etc/passwd and /etc/hosts which exist on stock macOS), plus macOS-specific sensitive-HOME and tmp-sibling tests.
 
 ### Windows: `unsupported` (rationale recorded)
 
@@ -151,7 +153,7 @@ Same discipline as RFC 0004: investigate, probe, then decide. No pretending equi
 |---|---|---|
 | Linux (kernel 5.13+, Landlock LSM enabled) | Landlock ruleset (workspace rwx + runtime read/exec allowlist, else deny) | **supported** (validated: escape suite 15/15, full SDK suite 59/59 under confinement on Ubuntu 24.04 kernel 6.8.0 ABI 4) |
 | Linux (pre-5.13 or Landlock unavailable) | None | **unknown** (fallback to ambient rights, declared) |
-| macOS | Seatbelt filesystem profile via `sandbox-exec` | **unknown** (post-v1.0 follow-up; `supported` only after the full E1-E10 suite passes on macOS CI) |
+| macOS | Seatbelt filesystem profile via `sandbox-exec` (allow-default with targeted denies, workspace re-allow) | **supported** (validated: full E1-E10 escape suite green on macOS; probe degrades to `unknown` if the binary disappears) |
 | Windows | None (AppContainer / restricted-token read limits) | **unsupported** (rationale recorded above; no implied equivalent) |
 
 ## Adversarial Test Plan (to implement)
