@@ -836,17 +836,20 @@ export class NativeBackend implements BackendEngine {
         }, timeout);
       }
 
-      // RSS-polling memory sampler (100ms interval). Samples the entire
-      // process group/tree so descendant workloads (pipelines, background jobs,
-      // chained sh -c children) are counted, not just the top-level shell
-      // process. Runs on every execution (not only under a limit) so the peak
-      // can be reported; enforcement below still applies only when configured.
+      // RSS memory sampler. Under a configured limit this is enforcement-grade
+      // (100ms) and kills the group on breach; without a limit it is peak-only
+      // tracking at a coarse 1s cadence so unenforced executions do not pay a
+      // sampler spawn per 100ms (PowerShell CIM sampling on Windows is slow
+      // and synchronous). Either way the max feeds peakMemoryBytes.
       if (child.pid !== undefined) {
         const monitoredRootPid = child.pid;
-        // Synchronous baseline so short-lived executions still report a
-        // peak instead of missing every sample interval.
-        const baseline = sampleGroupRssBytes(monitoredRootPid);
-        if (baseline > 0) peakMemoryBytes = baseline;
+        const enforcing = memLimitBytes !== null;
+        if (!enforcing) {
+          // Synchronous baseline so short-lived unenforced executions still
+          // report a peak instead of missing every sample interval.
+          const baseline = sampleGroupRssBytes(monitoredRootPid);
+          if (baseline > 0) peakMemoryBytes = baseline;
+        }
         memPoller = setInterval(() => {
           if (settled) {
             clearInterval(memPoller!);
@@ -857,12 +860,12 @@ export class NativeBackend implements BackendEngine {
           if (rss > 0 && (peakMemoryBytes === undefined || rss > peakMemoryBytes)) {
             peakMemoryBytes = rss;
           }
-          if (memLimitBytes !== null && rss > memLimitBytes) {
+          if (enforcing && rss > memLimitBytes) {
             oomKilled = true;
             clearInterval(memPoller!);
             killProcess('SIGKILL');
           }
-        }, 100);
+        }, enforcing ? 100 : 1000);
       }
 
       // CPU-time budget enforcement (100ms interval). Measures cumulative

@@ -34,9 +34,13 @@ test('Bounded output retention (native backend)', async (t) => {
     // under the timeout and sustains indefinitely. (A bare while(true) write
     // loop starves the flush side, so yields are required to actually emit;
     // ignoring backpressure with large batches trips pipe write limits, so
-    // the producer waits for drain instead.)
-    const producer = `node -e 'const b = Buffer.alloc(65536, 120); const { once } = require("events"); (async () => { while (true) { if (!process.stdout.write(b)) await once(process.stdout, "drain"); } })();'`;
-    const execution = await sandbox.exec(producer, {
+    // the producer waits for drain instead.) Written as a file so no shell
+    // quoting is involved (Windows runs cmd.exe, where single quotes break).
+    await sandbox.writeFile(
+      'flood.js',
+      'const b = Buffer.alloc(65536, 120); const { once } = require("events"); (async () => { while (true) { if (!process.stdout.write(b)) await once(process.stdout, "drain"); } })();'
+    );
+    const execution = await sandbox.exec('node flood.js', {
       timeout: 5000,
       onStdout: (chunk) => {
         callbackBytes += Buffer.byteLength(chunk, 'utf8');
