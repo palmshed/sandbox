@@ -20,7 +20,7 @@ and macOS Seatbelt confinement under the existing `osFilesystemIsolation`
 tri-state (no schema change for the platform expansion). All three are
 backward-compatible extensions of the frozen 1.0.0 contract: purely
 additive fields plus one documented retention behavior with a lossless
-streaming path and migration note (see `CHANGELOG.md` Unreleased entry,
+streaming path and migration note (see `CHANGELOG.md` `[1.3.0]` entry,
 now `[1.3.0]`).
 
 ### v1.2.0 (optional CPU hard quota capability)

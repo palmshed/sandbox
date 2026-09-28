@@ -1,6 +1,6 @@
 # RFC 0008: Rust SDK Binding Note (F1)
 
-- **Status**: Accepted as the F1 implementation contract; crate implemented at the F1 milestone (see `sdk/rust/`), 3-OS CI gate added, 0.x release decision pending.
+- **Status**: Accepted as the F1 implementation contract; crate released as `v0.1.0` (see `sdk/rust/`), 3-OS CI gate green, not published to crates.io.
 - **Scope**: Maps the existing TypeScript sandbox contract to Rust without
   redefining it. JSON schemas stay authoritative; this note only fixes how
   TypeScript-isms surface in Rust and where the engine boundary lies.
