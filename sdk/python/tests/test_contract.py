@@ -228,10 +228,20 @@ async def test_cancel_is_idempotent_and_wait_repeatable():
 async def test_callback_ordering_matches_production_order():
     sb = await _new_sandbox()
     try:
-        ex = await sb.exec("for i in 1 2 3 4 5; do echo line-$i; done")
+        # node loop, not shell syntax: cmd.exe cannot parse POSIX for-loops,
+        # and an empty output would make this test pass vacuously.
+        await sb.write_file(
+            "lines.js",
+            b"for (let i = 1; i <= 5; i++) console.log('line-' + i);",
+        )
+        ex = await sb.exec("node lines.js")
         chunks: list[str] = []
         ex.on_stdout(chunks.append)
         await ex.wait()
+        # Guard against vacuous passes: the workload must have produced
+        # output, otherwise ordering proves nothing (POSIX shell syntax
+        # fails silently on cmd.exe, which is how this guard was earned).
+        assert "line-3" in ex.stdout(), f"workload produced no output: {ex.stdout()!r}"
         # Concatenated callbacks must equal retained stdout: no reordering,
         # no dropped chunks.
         assert "".join(chunks) == ex.stdout()
@@ -242,7 +252,11 @@ async def test_callback_ordering_matches_production_order():
 async def test_async_iterator_observes_same_stream():
     sb = await _new_sandbox()
     try:
-        ex = await sb.exec("for i in 1 2 3; do echo row-$i; done")
+        await sb.write_file(
+            "rows.js",
+            b"for (let i = 1; i <= 3; i++) console.log('row-' + i);",
+        )
+        ex = await sb.exec("node rows.js")
         await ex.wait()
         # Snapshot semantics like the reference stdoutStream(): iterate
         # retained chunks after the terminal state.
@@ -258,7 +272,11 @@ async def test_async_iterator_observes_same_stream():
 async def test_concurrent_readers_are_safe():
     sb = await _new_sandbox()
     try:
-        ex = await sb.exec("for i in $(seq 1 200); do echo x$i; done")
+        await sb.write_file(
+            "many.js",
+            b"for (let i = 1; i <= 200; i++) console.log('x' + i);",
+        )
+        ex = await sb.exec("node many.js")
 
         async def reader() -> None:
             for _ in range(50):
@@ -269,6 +287,7 @@ async def test_concurrent_readers_are_safe():
 
         await asyncio.gather(*[reader() for _ in range(8)])
         await ex.wait()
+        assert "x200" in ex.stdout(), "workload produced no output"
     finally:
         await sb.destroy()
 
