@@ -61,7 +61,7 @@ untrusted workloads.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability within `palmshed/sandbox`, please do NOT open a public GitHub issue. Send a report to **security@palmshed.io** including:
+If you discover a security vulnerability within `palmshed/sandbox`, please do NOT open a public GitHub issue. Send a report to **palmshed@icloud.com** including:
 
 1. Description of the vulnerability.
 2. Steps to reproduce or proof-of-concept script.
