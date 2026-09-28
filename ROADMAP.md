@@ -258,7 +258,7 @@ requirement. No open issue tracks these yet by design.
 |---|---|---|---|
 | **F1** | Rust SDK | Second SDK proving the spec is language-independent (own OS glue, no Node) | Implementation milestone done (`sdk/rust/`, RFC 0008): contract + basic suites, 3-OS CI gate, consumer example; 0.x release decision pending |
 | **F2** | Go SDK | Same contract in Go | Released `go-v0.1.0` (`sdk/go/`, RFC 0009): guarded terminal state, concurrent drains, 19 tests green under mandatory `-race` on all three OSes, consumer example, cross-language cancellation check with discrepancy 001 recorded |
-| **F3** | Python SDK | Same contract in Python | Implementation milestone done (`sdk/python/`, RFC 0011): async-first guarded state, concurrent drains, 20 contract tests green, consumer example, TS cross-check; 3-OS CI and `py-v0.1.0` release pending |
+| **F3** | Python SDK | Same contract in Python | Released `py-v0.1.0` (`sdk/python/`, RFC 0011): async-first guarded state, concurrent drains, 20 contract tests green on 3 OS × Python 3.11/3.14, consumer example, TS cross-check |
 | **F4** | Firecracker backend | MicroVM isolation engine | Not started |
 | **F5** | WASI backend | WebAssembly execution model | Not started |
 | **F6** | Remote daemon backend | Execution over a remote boundary (would make `remoteExecution` true) | Not started |
