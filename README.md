@@ -35,7 +35,7 @@
 
 1. **Runtime Specification (`spec/`)**: JSON Schemas & versioning ([`spec/version.md`](spec/version.md)).
 2. **Compliance Suite (`compliance/`)**: Cross-language conformance test suite.
-3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript), published to npm); Rust SDK at the F1 milestone ([`sdk/rust`](sdk/rust)); Go SDK at the F2 milestone ([`sdk/go`](sdk/go), `-race` verified); Python planned. Each non-npm SDK carries its own tag namespace (`v0.x`, `go-v0.x`) so version lines stay independent.
+3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript), published to npm); Rust SDK at the F1 milestone ([`sdk/rust`](sdk/rust)); Go SDK at the F2 milestone ([`sdk/go`](sdk/go), `-race` verified); Python SDK at the F3 milestone ([`sdk/python`](sdk/python), async-first, 20 contract tests). Each non-npm SDK carries its own tag namespace (`v0.x`, `go-v0.x`, `py-v0.x`) so version lines stay independent.
 4. **Backends (`backends/`)**: Native process driver, Docker container driver; Firecracker and WASI are planned.
 
 ---

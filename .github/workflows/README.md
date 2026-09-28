@@ -14,7 +14,8 @@
 | `benchmarks.yml` | Informational benchmark evidence generation (cold init/create/warm, overhead, parallel, host); uploads evidence artifacts, never gates, never asserts targets | Push (paths: `benchmarks/**`), Manual (`workflow_dispatch`) | ubuntu, macOS |
 | `rust.yml` | Rust SDK contract gate: `cargo test --locked` plus `clippy -D warnings` on the stable toolchain across the 3-OS matrix | Push, Pull Request (paths: `sdk/rust/**`) | ubuntu, macOS, Windows |
 | `go.yml` | Go SDK contract gate: `go test -race ./...` (race detector mandatory, per RFC 0009 section 7) plus `go vet` and the consumer across the 3-OS matrix | Push, Pull Request (paths: `sdk/go/**`) | ubuntu, macOS, Windows |
-| `release.yml` | Version-gated release: validation gate, pack contents verification, artifacts & SBOM, GitHub release, npm publish + registry smoke test (TypeScript); Rust/Go/Python publishers are placeholders. The publish job is idempotent (skips already-published versions) and the smoke test retries install for up to 150s to absorb registry propagation delay | Version tags (`v*`) | ubuntu-24.04 (pinned) |
+| `python.yml` | Python SDK contract gate: pytest suite plus consumer lifecycle across the 3-OS matrix on the 3.11 floor and current stable | Push, Pull Request (paths: `sdk/python/**`) | ubuntu, macOS, Windows |
+| `release.yml` | Version-gated release: validation gate, pack contents verification, artifacts & SBOM, GitHub release, npm publish + registry smoke test (TypeScript); Rust/Go/Python publishers are placeholders. The publish job is idempotent (skips already-published versions) and the smoke test retries install for up to 150s to absorb registry propagation delay | Version tags (`v[1-9]*`; non-Node lines like `v0.x`/`go-v0.x`/`py-v0.x` never trigger it) | ubuntu-24.04 (pinned) |
 
 ## Governance & Secrets
 - **ci.yml**: Requires no secret tokens.

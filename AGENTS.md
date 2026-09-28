@@ -49,7 +49,7 @@ sandbox/
 │   │   └── src/osfs/      # RFC 0006 OS-filesystem isolation (embedded Landlock source, allowlist, confinement probe)
 │   ├── rust/              # F1 Rust SDK (`palmshed-sandbox` crate: Sandbox/Execution/types/errors + native OS glue; no Node dependency)
 │   ├── go/                # Go SDK (F2; guarded execution state, contract suite under -race, independent go-* tag line)
-│   └── python/            # Python SDK (planned, future unit F3; AI agent frameworks)
+│   └── python/            # Python SDK (F3; async-first guarded state, contract suite, independent py-* tag line; AI agent frameworks)
 ├── scripts/
 │   ├── punctuation-check.mjs  # CI: hard-fail on Unicode em dash in prose; warn-only on prose --
 │   ├── gen-osfs-source.mjs     # Regenerates the embedded Landlock runner source (landlockRunnerSource.ts); --check guards drift
