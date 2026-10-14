@@ -187,6 +187,16 @@ docs updated with flags
   host first; then establish the self-hosted runner and
   integration-test path; then begin backend implementation. Runner
   registration alone does not prove Firecracker can boot.
+- **P1 environment survey, 2026-10-14**: no existing Linux host was
+  identified in the current environment (no SSH hosts configured, no
+  mesh networking, no cloud CLIs installed), so Option A is closed for
+  now, subject to discovery of an external machine with working KVM
+  access. Bare-metal and nested-virtualization cloud candidates remain
+  unevaluated: verify the current Firecracker guide, regional
+  availability, pricing, and actual KVM access before selecting a route.
+  No cloud resources authorized. The gate is unchanged: `KVM_ACCESS_OK`
+  is necessary but not sufficient; a real jailer-based Firecracker boot
+  plus a successful guest-agent `READY` handshake are also required.
 
 ## 12. Lifecycle resolution (deeper review, decided)
 
