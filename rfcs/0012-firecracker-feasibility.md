@@ -250,8 +250,9 @@ this order, with no design decisions recorded for them yet:
 1. Guest protocol contract: decided in section 14 (framing, versioning,
    identity and dedup, ordering barrier, cancellation wire behavior,
    disconnect recovery, memory budget).
-2. Resource control mapping: which controls enforce per VM, per
-   execution, or best-effort only.
+2. Resource control mapping: decided in section 15 (layer split,
+   cgroup accounting, aggregate memory policy, transfer-boundary quota,
+   honest quota-override rejection).
 3. Filesystem transfer invariants: containment on both boundaries,
    symlink races, partial transfers, size bounds, atomic completion.
 4. Asset manifest completion: provenance, checksums, licenses, and
@@ -394,3 +395,107 @@ protocol-owned allocations fit within it.
 
 Minor-version required semantics; all numeric defaults above;
 each unvalidated until real-VM testing.
+
+## 15. Resource semantics (decided 2026-10-14)
+
+Design decision only. No implementation, provisioning, SDK contract
+change, capability promotion, or P1 movement. Real-VM conformance is not
+established by this section. All numeric bounds below are provisional
+design defaults, unvalidated until measured on a real KVM host.
+
+### Layer split
+
+Two enforcement layers, never conflated. The host layer (outside the
+guest) owns wall-clock deadlines, VMM process throttling via host
+cgroups, static VM sizing, and VMM kill; it sees the guest only as one
+process tree and cannot attribute CPU or memory to individual commands.
+The guest layer (inside the guest, via the agent) owns per-command
+accounting and enforcement. Anything the host cannot see is
+agent-enforced; anything the agent cannot isolate is host-sized.
+
+### Wall-clock timeout
+
+Host-side monotonic timer from exec acceptance, covering agent startup
+and protocol delays. Expiry cancels through the control channel with
+VMM termination as backstop. Fully enforceable per execution.
+
+### CPU time budget (kill on breach)
+
+Authoritative measurement is the per-command guest cgroup's cumulative
+CPU accounting (`cpu.stat`), which follows descendants by membership
+instead of PID discovery; `/proc` tree-walking is at most a fallback,
+never the foundation. Enforcement loop interval is provisional (100 ms
+proposed, unvalidated). Breach kills the cgroup's contents and reports
+`ERR_CPU_EXCEEDED`. Missing accounting fails closed with `EXEC_FAILED`
+rather than running unenforced under a true `cpuLimits` flag.
+
+Overshoot residual: enforcement latency is at least one polling
+interval plus enforcement and scheduling delay (agent stalls, delayed
+cgroup reads). No exact bound is claimed. Real-VM tests measure
+observed overshoot rather than assuming it.
+
+Fallback termination drains the cgroup until empty: read the member
+set, kill, repeat. A single process-list snapshot is insufficient
+because descendants can fork mid-termination. Bounded rounds apply; if
+the set never empties, settle the execution as infrastructure failure
+and mark the sandbox unhealthy rather than leaving unkillable work
+behind.
+
+### CPU quota (throttle, never kill)
+
+Firecracker expresses no fractional vCPU rate cap, so quota maps to a
+host cgroup rate cap applied to the VMM process tree, with `vcpu_count`
+kept as a separate static sizing knob. Throttle-never-kill semantics
+hold exactly; the kill path is never involved. A separately configured
+wall-clock timeout can still terminate a throttled command, and timeout
+values under quota must be sized with throttling in mind.
+
+Per-execution `cpuQuota` overrides that cannot be honored are rejected
+honestly with `EXEC_FAILED`, reusing the existing apply-failure code
+path. Silent acceptance under a true `cpuQuotaLimits` flag is the least
+honest option and is not used. Open compatibility item, recorded
+without changing the schema: `exec.schema.json` describes the per-exec
+override as working, a description written against backends where the
+true flag implies the override dance. F4 documents the deviation as
+backend-specific pending spec clarification or future per-exec
+granularity.
+
+### Memory: per-execution ceilings plus aggregate policy
+
+Each command tree gets its own guest cgroup with a memory ceiling.
+Breach confirmed by that cgroup's `memory.events` `oom_kill` delta maps
+to `ERR_OOM_EXCEEDED`. The agent runs outside workload cgroups with
+minimum OOM score plus reserved headroom accounted in VM sizing; this
+reduces but cannot guarantee agent survival. If the guest-global OOM
+killer takes a different process, or counters leave the victim
+ambiguous, the result stays infrastructure failure. If the agent
+disappears, non-terminal executions become infrastructure failures
+while already-terminal results stand under first-terminal-wins.
+
+Per-exec ceilings may sum past guest RAM (oversubscription allowed and
+documented). Sizing guidance, not enforcement: size guest RAM at or
+above expected concurrent ceilings plus agent and kernel headroom.
+Sandbox-wide bound comes from static `mem_size_mib` at boot. Limits
+describe guest-visible memory; host VMM overhead is backend overhead
+excluded from limit accounting.
+
+### Disk quota at the transfer boundary
+
+Guest-local writes are ephemeral and outside the host workspace quota;
+guest child processes writing to guest-local scratch are not
+automatically visible to the host, and visibility begins only at
+explicit transfer. Transfers into the workspace pass host-side quota
+enforcement before the write is committed; only materialized files are
+visible through `downloadFile`. Failed or over-quota transfers leave no
+partially committed workspace state, matching the reference backend's
+existing rollback behavior on quota breach.
+
+### Concurrency and capabilities
+
+Per-execution cgroup isolation holds within the 32-concurrent-execution
+session bound; static VM sizing is shared. Each capability flips only
+on real-VM tests: `cpuLimits` on tested budget enforcement,
+`memoryLimits` on tested ceilings plus OOM attribution,
+`cpuQuotaLimits` on tested host-cgroup throttling with the documented
+sandbox granularity and honest-rejection semantics. No new capability
+is proposed.
