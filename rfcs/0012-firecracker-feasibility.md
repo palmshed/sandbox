@@ -251,12 +251,11 @@ settles outstanding executions as failed with an infrastructure cause
 (distinct from workload failure under the existing error model), and
 only destroy is valid on that sandbox afterwards.
 
-## 13. Deferred design tracks (tracks 1-4 decided in sections 14-17, rest open)
+## 13. Deferred design tracks (tracks 1-5 decided in sections 14-18, rest open)
 
-The deeper review surfaced six further tracks. Tracks 1 through 4
-reached decisions, recorded in sections 14, 15, 16, and 17; tracks 5
-and 6 remain open, in this order, with no design decisions recorded
-for them yet:
+The deeper review surfaced six further tracks. Tracks 1 through 5
+reached decisions, recorded in sections 14, 15, 16, 17, and 18; track
+6 remains open, with no design decision recorded for it yet:
 
 1. Guest protocol contract: decided in section 14 (framing, versioning,
    identity and dedup, ordering barrier, cancellation wire behavior,
@@ -272,8 +271,10 @@ for them yet:
    and verification rules, feasibility-only CI artifacts, scripted
    customization with no SSH, pre-screen versus runtime validation,
    compatibility triple, licensing checklist).
-5. Failure and capability states for unavailable agents, crashed VMMs,
-   and unestablished guarantees.
+5. Failure and capability states: decided in section 18 (health model,
+   existing error-model mapping, no-retry and no-restart rules,
+   triple qualification versus instance init, execution-settlement
+   versus API-rejection distinction).
 6. Test matrix: ordinary contract tests kept distinct from tests that
    require a real KVM host.
 
@@ -657,3 +658,77 @@ its bundled dependencies (reviewed as a set, not as a single MIT
 artifact). Fetch-at-test-time is not redistribution; vendoring would
 change that analysis, which is one more reason binaries never enter
 the repo.
+
+## 18. Failure and capability states (decided 2026-10-14)
+
+Design decision only. No implementation, provisioning, SDK contract
+change, capability promotion, or P1 movement. Real-VM conformance is not
+established by this section. The machine-readable diagnostics question
+stays explicitly open.
+
+### Health model
+
+Three one-way states with no new public accessor: `INITIALIZING`
+(before agent `READY`), `HEALTHY`, and `UNHEALTHY` (terminal). Destroy
+is valid from any state, including partial initialization, with bounded
+waits and idempotent cleanup. Health is observable purely through
+existing behavior: a healthy sandbox executes, an unhealthy one fails
+new work honestly. No health query method is added, since the error
+model already conveys what callers need.
+
+### Failure mapping onto the existing error model
+
+No new error code is proposed; the Docker precedent (infrastructure
+loss surfaces as `INVALID_BACKEND`, never as a workload outcome)
+covers every case:
+
+| Failure | Observable behavior |
+|---|---|
+| Init failure (no KVM, boot fail, no `READY` in deadline) | `create`/`init` rejects with `INVALID_BACKEND`; no usable sandbox |
+| VMM death or agent silence mid-flight | In-flight executions settle `failed`, exit `-1`, stderr records infrastructure cause; sandbox goes `UNHEALTHY` |
+| Post-`UNHEALTHY` `exec` | Rejects honestly with `INVALID_BACKEND` |
+| Protocol violation or unattributable OOM | Settled `failed`, never success, never fabricated exit zero |
+| Destroy in any state | Completes host-side cleanup; never hangs |
+
+Workload resource breaches keep their existing `ERR_*` codes unchanged.
+
+### No-retry and no-restart rules
+
+The backend never retries a failed execution internally; caller retries
+use a new execution ID. The backend never restarts a dead VMM
+silently: an `UNHEALTHY` sandbox stays unhealthy until destroyed, so
+nothing continues with lost state.
+
+### Triple qualification versus instance initialization
+
+Two distinct gates, not one:
+
+- Artifact-triple qualification: boot, handshake, enforcement, and
+  consumer tests establish which capabilities an exact kernel, rootfs,
+  and agent-protocol triple supports. A new triple inherits no
+  validation from an earlier one.
+- Instance initialization: confirms that this sandbox started and its
+  required runtime mechanisms are available. A missing mechanism fails
+  closed at init rather than advertising an unenforced guarantee, and a
+  failed instance becomes unhealthy without redefining what its triple
+  supports.
+
+This separates per-run checks from per-artifact validation: full
+compliance need not rerun at every sandbox creation, but no sandbox may
+claim what its triple has not proven.
+
+### Execution settlement versus API rejection
+
+The two failure surfaces stay distinct:
+
+- Infrastructure failure during execution settles the execution as
+  failed with exit `-1` and diagnostic stderr, never as a successful
+  workload result.
+- Calls made after the sandbox is unhealthy reject with
+  `INVALID_BACKEND`.
+- Diagnostic stderr is not a stable machine-readable interface unless
+  separately specified. Whether callers can reliably distinguish
+  infrastructure failures from ordinary workload failures using only
+  the existing result shape remains explicitly open; the later
+  `INVALID_BACKEND` rejection is recorded as insufficient evidence for
+  an earlier settled execution, not as an answer.
