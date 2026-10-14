@@ -1,6 +1,6 @@
 # RFC 0012: Firecracker Backend Feasibility and Architecture Gate (F4)
 
-- **Status**: Accepted as the F4 Phase 1 gate. No implementation yet.
+- **Status**: Accepted as the F4 Phase 1 gate; guest-agent protocol decided in section 14. No implementation yet.
 - **Scope**: Settles whether and how a Firecracker backend can join the
   existing contract, and under what prerequisites. It does not change the
   specification, any SDK, or any existing backend.
@@ -241,15 +241,15 @@ settles outstanding executions as failed with an infrastructure cause
 (distinct from workload failure under the existing error model), and
 only destroy is valid on that sandbox afterwards.
 
-## 13. Deferred design tracks (recorded, not decided)
+## 13. Deferred design tracks (track 1 decided in section 14, rest open)
 
-The deeper review surfaced six further tracks. They are accepted as the
-work list, in this order, with no design decisions recorded for them
-yet:
+The deeper review surfaced six further tracks. Track 1 reached a
+decision, recorded in section 14; tracks 2 through 6 remain open, in
+this order, with no design decisions recorded for them yet:
 
-1. Guest protocol contract: version negotiation, message framing,
-   execution IDs, retries, cancellation acknowledgements, and the output
-   completion barrier.
+1. Guest protocol contract: decided in section 14 (framing, versioning,
+   identity and dedup, ordering barrier, cancellation wire behavior,
+   disconnect recovery, memory budget).
 2. Resource control mapping: which controls enforce per VM, per
    execution, or best-effort only.
 3. Filesystem transfer invariants: containment on both boundaries,
@@ -263,3 +263,134 @@ yet:
 
 Section 9 stands unchanged: none of this work alters the public spec,
 any SDK, or the infrastructure gate.
+
+## 14. Guest-agent protocol (decided 2026-10-14)
+
+Design decision only. No implementation, provisioning, SDK contract
+change, capability promotion, or P1 movement. Real-VM conformance is not
+established by this section. All numeric bounds below are provisional
+design defaults, unvalidated until measured on a real KVM host.
+
+### Transport and session
+
+The agent dials out to the host (host CID 2, well-known port); the host
+cannot dial into the guest. The host issues an epoch token in
+`HELLO_ACK`; every frame on every connection carries it, and
+prior-epoch frames are rejected outright. Session state dies with the
+session. On disconnect the agent terminates and reaps that session's
+commands; the host settles old-session executions as failed regardless,
+so host settlement never depends on agent proof. Reconnect
+re-handshakes from `HELLO`; commands are never resumed across sessions.
+
+### Handshake and versioning
+
+`HELLO {protocol_version, agent_version}`, then `HELLO_ACK` or explicit
+`REJECT`, then `READY`. Init completes only at `READY`, within an
+absolute init deadline. Protocol versioning is independent of SDK
+versions, starting at 1, with exact major match required. Unknown
+message types are ignored with a logged warning, preserving forward
+compatibility for future minor versions. Corrupt framing (bad length,
+truncated header, invalid control JSON, oversize frames) closes the
+session and fails all nonterminal executions without overwriting
+terminal results.
+
+### Framing and channels
+
+Frames carry a 4-byte big-endian length of type plus payload, then a
+1-byte type, then the payload. One control connection per session
+carries JSON control frames only, maximum 16 MiB including type and
+payload. One data connection per execution carries both stdout and
+stderr as raw bytes after a `BIND {epoch, id, stream}` frame; unknown
+bindings are closed. Data frames max 64 KiB including type and payload;
+a larger data frame is rejected as malformed even though below the
+general limit. Length is validated before allocation, with one
+in-progress frame per connection at its channel cap.
+
+### Control independence
+
+The agent must service the control connection independently of bulk
+writes, through nonblocking I/O with an event loop or per-execution
+writer tasks separate from the control loop. Application spooling is
+bounded (1 MiB per stream, provisional); beyond it a writer blocks its
+own task only. Cancellation preempts a blocked writer by closing its
+data connection and terminating the command. Conformance requires a
+stalled data consumer to leave cancel processing within deadline while
+a second execution proceeds unaffected.
+
+### Execution identity and dedup
+
+The host generates every execution ID plus a per-session monotonic
+sequence number. The guest holds a fixed slab of 4096 slots of 128
+bytes; a slot is claimed at `START` acceptance and transitions active
+to terminal in place. Each record holds session sequence (`u32`),
+bounded ID bytes (max 64), status (`u8`), exit code (`i32`), and
+per-stream final sequence plus totals (`u64` pairs), totaling 105 bytes
+logical against the 128-byte encoded cap. Duplicate `START` for an
+active ID re-acknowledges current state; for a terminal ID it replays
+the full stored outcome (status, code, totals). New `START` beyond the
+cap is rejected with `SESSION_FULL` as honest failure. The host
+re-sends `START` only when it received no response and only within the
+same session; cross-session retry is prohibited with enforcement at the
+host. Sessions past the cap drain normally; further work needs destroy
+and recreate, since automatic rotation is deferred.
+
+### Ordering, completion, and retention
+
+Per-stream sequence numbers with independent spaces. `EXIT` carries
+per-stream byte totals and final sequence numbers, where totals mean
+bytes successfully written by the agent, including bytes the host later
+discards through retention: truncation is a host retention policy,
+never transport loss. The host completion barrier compares received
+counts against totals; mismatch, gaps, or duplicates fail closed as
+infrastructure failure. A replayed terminal outcome supplies
+expectations only and never recovers missing bytes.
+
+### Cancellation and failure
+
+First terminal outcome per execution wins; `CANCEL_ACK` in-progress is
+not confirmation; settlement occurs only on a valid terminal event or
+confirmed whole-guest termination. Cancel deadline expiry falls back to
+VMM termination: all running executions settle consistently as failed
+with infrastructure cause, the sandbox is marked unhealthy, and only
+destroy is valid afterwards. Cancel-after-terminal is a no-op;
+cancellation is idempotent. The wall-clock deadline is host-side
+monotonic from exec acceptance, covering startup and protocol delays;
+timeout reports -1 and signal deaths map to 128 plus signum from raw
+wait status at the host. Vsock close mid-command fails affected
+executions, never exit zero; heartbeats bound silence detection with
+the deadline resetting on any valid frame, and backoff never extends
+failed deadlines.
+
+### Stdin and transfers
+
+`stdin` crosses inline in `START`, base64-encoded, with the ceiling
+defined in decoded input bytes (1 MiB, provisional) and explicit
+rejection above, so encoding overhead never moves the contract.
+Streaming stdin is deferred. The `TRANSFER_*` message range is reserved
+for track 3; nothing about transfers is decided here.
+
+### Memory budget (host-side configured protocol budget)
+
+| Term | Bound | Basis |
+|---|---|---|
+| Application spool | 64 MiB | 32 concurrent executions × 2 streams × 1 MiB, lazy, budget-enforced |
+| Data reassembly | 2 MiB | 32 connections × 64 KiB, one partial frame each |
+| Control reassembly | 16 MiB | 1 connection × 16 MiB, one partial frame |
+| Host socket buffers | 16.5 MiB | 33 connections × 256 KiB × send and receive, configured |
+| Terminal slab | 0.5 MiB | 4096 × 128 B fixed slab |
+| Fixed overhead allowance | 64 KiB | Control state (epoch token, handshake state, connection table, slab bitmap) plus all framing prefixes (33 × 4 B) |
+
+The listed components sum to 99 MiB; the 64 KiB allowance brings the
+configured-budget total to 99.0625 MiB, reported as a 100 MiB
+conservative ceiling. This arithmetic is a configured-budget model, not
+a resident-memory measurement: kernels may report less, and the figure
+covers only the host side. Guest-endpoint socket memory uses identical
+configured values but is accounted by the guest kernel and stated
+alongside, outside the host figure. The allowance is a defensible
+design bound provided the implementation later verifies that all
+protocol-owned allocations fit within it.
+
+### Open questions carried
+
+Minor-version required semantics; all numeric defaults above;
+each unvalidated until real-VM testing.
