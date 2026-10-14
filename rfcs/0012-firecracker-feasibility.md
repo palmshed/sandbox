@@ -141,6 +141,11 @@ following the F1/F2/F3 precedent.
 - No guest image building infrastructure beyond the pinned-asset
   provenance pipeline.
 - No orchestrator integration (containerd, Kubernetes, hosted VM APIs).
+- No GraphQL, Redis, or Kafka. The backend uses the existing
+  `BackendEngine` interface plus Firecracker's local REST API; execution
+  state lives in-process per sandbox and guest messages travel the
+  versioned vsock channel directly. Those technologies answer to a
+  future distributed control plane, not to F4.
 - No changes to the Native or Docker backends, any SDK, or the spec.
 - No placeholder or stub backend merged to "reserve" the name. The
   `firecracker` registry entry appears together with a working,
