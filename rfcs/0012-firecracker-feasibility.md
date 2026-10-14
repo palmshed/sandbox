@@ -251,11 +251,11 @@ settles outstanding executions as failed with an infrastructure cause
 (distinct from workload failure under the existing error model), and
 only destroy is valid on that sandbox afterwards.
 
-## 13. Deferred design tracks (tracks 1-5 decided in sections 14-18, rest open)
+## 13. Deferred design tracks (all six decided in sections 14-19)
 
-The deeper review surfaced six further tracks. Tracks 1 through 5
-reached decisions, recorded in sections 14, 15, 16, 17, and 18; track
-6 remains open, with no design decision recorded for it yet:
+The deeper review surfaced six further tracks. All six reached
+decisions, recorded in sections 14, 15, 16, 17, 18, and 19. The design
+sequence is complete; implementation remains gated on P1 throughout.
 
 1. Guest protocol contract: decided in section 14 (framing, versioning,
    identity and dedup, ordering barrier, cancellation wire behavior,
@@ -275,8 +275,10 @@ reached decisions, recorded in sections 14, 15, 16, 17, and 18; track
    existing error-model mapping, no-retry and no-restart rules,
    triple qualification versus instance init, execution-settlement
    versus API-rejection distinction).
-6. Test matrix: ordinary contract tests kept distinct from tests that
-   require a real KVM host.
+6. Test matrix: decided in section 19 (Tier 0 host-side logic without
+   KVM, Tier 1 KVM-gated compliance and consumer tests, fake-backend
+   boundary, capability gates with negative tests, single conformance
+   entry point).
 
 Section 9 stands unchanged: none of this work alters the public spec,
 any SDK, or the infrastructure gate.
@@ -732,3 +734,64 @@ The two failure surfaces stay distinct:
   the existing result shape remains explicitly open; the later
   `INVALID_BACKEND` rejection is recorded as insufficient evidence for
   an earlier settled execution, not as an answer.
+
+## 19. Test matrix (decided 2026-10-14)
+
+Design decision only. No implementation, provisioning, SDK contract
+change, capability promotion, or P1 movement. Runner labels stay open
+until P1 provisioning; whether the production suite gains a Firecracker
+scenario stays open until implementation argues otherwise.
+
+### Tier 0: no KVM required
+
+Host-side logic tests that run everywhere, including the standard
+matrix, and prove nothing about guest behavior: protocol codec
+round-trips and malformed rejection, dedup slab logic with replay and
+honest over-cap failure, budget arithmetic recomputed from constants,
+manifest validation (schema, exact pins, no binaries committed),
+testable health-state and first-terminal-wins logic, and failure-mode
+unit coverage that needs no guest. None of these touch a capability
+flag.
+
+### Tier 1: KVM-gated compliance and consumer tests
+
+`compliance/backends/firecracker.test.js` plus a consumer lifecycle,
+structured like the Docker gate. The gate probes `/dev/kvm` readable
+and writable at suite start; when genuinely unavailable or
+inaccessible, the whole tier skips honestly with reason stated. When
+KVM is present but Firecracker fails to boot, the jailer fails, the
+agent never reaches `READY`, or a required prerequisite is broken,
+that is a test failure, not an environment skip: a broken runner must
+never appear green.
+
+Coverage: lifecycle, exec with stdout/stderr/exit/stdin, timeout,
+cancellation and destroy races, CPU and memory enforcement with
+attribution, quota throttling without killing, transfer integrity with
+quota rollback, concurrent workspace changes, network leak suite before
+any network flag moves, and cleanup with residue checks. Every
+capability flag gets its negative test (breach produces the specified
+failure); timing-sensitive assertions reuse validity gating rather
+than weakened thresholds.
+
+Negative tests assert both the expected result and the expected
+sandbox state: workload-level breaches leave the sandbox usable while
+the agent and VMM stay healthy, while agent silence or VMM death makes
+it unhealthy per section 18. Usability is not asserted universally.
+
+### Fake-backend boundary
+
+Loopback transport stubs may exercise host-side codec and state-machine
+logic in Tier 0. They must never implement the `BackendEngine`
+capability surface, never register in the backend registry, and never
+count as conformance evidence. No stub merges to reserve behavior.
+
+### CI wiring and completion
+
+The standard matrix always runs Tier 0 and honestly skips Tier 1
+without KVM. Tier 1 runs for real on the self-hosted KVM label once
+P1 provisioning establishes it. `verify-conformance.mjs` picks up the
+new suite by glob with no special-casing, and the repro lab gains
+VM-specific repros (VMM death, agent silence) under the existing
+workflow. Completion means Tier 0 green everywhere, Tier 1 green on
+the KVM host, consumer lifecycle green on a real VM, and docs updated
+with only the flags testing established.
