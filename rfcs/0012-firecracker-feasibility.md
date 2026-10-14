@@ -182,3 +182,79 @@ docs updated with flags
   host first; then establish the self-hosted runner and
   integration-test path; then begin backend implementation. Runner
   registration alone does not prove Firecracker can boot.
+
+## 12. Lifecycle resolution (deeper review, decided)
+
+Killing the VMM is a reliable whole-guest termination mechanism, but it
+cannot by itself preserve execution-level cancellation in a reusable
+sandbox. The resolution separates the two operations permanently:
+
+- **Execution cancellation is per command, inside the guest.** The host
+  sends a cancellation request naming the execution ID. The guest agent
+  terminates that command and its descendants, reaps them, and reports a
+  terminal result. The sandbox stays usable whenever the guest is
+  otherwise healthy.
+- **VMM termination is reserved for sandbox destruction and
+  unrecoverable guest failure.** Destroy rejects new work, settles every
+  outstanding execution, stops the guest, awaits VMM process exit, and
+  releases host-side resources. Teardown is idempotent and safe after
+  partial initialization, unexpected VMM exit, or concurrent execution
+  failure.
+
+Terminal precedence follows the cross-SDK rule already established for
+cancellation: the first terminal outcome observed by the host guard wins
+for each execution, and contradictory terminal events are never emitted.
+A cancellation acknowledgement from the agent is not proof of
+termination; the host treats cancellation as complete only after
+termination is confirmed or the entire guest has been terminated.
+Cancel-after-terminal is a no-op, and repeated cancellation is
+idempotent.
+
+Concurrency policy: one VM per sandbox, with the agent multiplexing
+concurrent commands. The contract's existing concurrency expectations
+apply, so serialization is not an acceptable simplification. Destroy
+racing command startup resolves deterministically: queued commands that
+never started settle as failed without starting, and no command remains
+indefinitely pending or escapes cleanup.
+
+Required behaviors:
+
+| Event | Required behavior |
+|---|---|
+| One command is cancelled | Stop that command; keep the sandbox alive if healthy |
+| Command reaches its wall-clock timeout | Terminate that command, report timeout, retain sandbox usability when possible |
+| Sandbox is destroyed during execution | Reject new work, stop the guest, settle every outstanding execution |
+| Guest agent becomes silent | Treat the execution as failed, not successful |
+| VMM exits unexpectedly | Mark the sandbox unhealthy; do not silently restart and continue with lost state |
+| Destroy races with command startup | No command may escape cleanup or remain indefinitely pending |
+| Cancellation races with normal exit | Produce one terminal outcome; never emit contradictory terminal events |
+
+The wall-clock deadline is owned by a host-side monotonic timer from
+exec acceptance, covering agent startup and protocol delays exactly as
+spawn time counts against the deadline on process drivers. A VMM death
+settles outstanding executions as failed with an infrastructure cause
+(distinct from workload failure under the existing error model), and
+only destroy is valid on that sandbox afterwards.
+
+## 13. Deferred design tracks (recorded, not decided)
+
+The deeper review surfaced six further tracks. They are accepted as the
+work list, in this order, with no design decisions recorded for them
+yet:
+
+1. Guest protocol contract: version negotiation, message framing,
+   execution IDs, retries, cancellation acknowledgements, and the output
+   completion barrier.
+2. Resource control mapping: which controls enforce per VM, per
+   execution, or best-effort only.
+3. Filesystem transfer invariants: containment on both boundaries,
+   symlink races, partial transfers, size bounds, atomic completion.
+4. Asset manifest completion: provenance, checksums, licenses, and
+   compatibility before any artifact source is chosen.
+5. Failure and capability states for unavailable agents, crashed VMMs,
+   and unestablished guarantees.
+6. Test matrix: ordinary contract tests kept distinct from tests that
+   require a real KVM host.
+
+Section 9 stands unchanged: none of this work alters the public spec,
+any SDK, or the infrastructure gate.
