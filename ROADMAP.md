@@ -259,7 +259,7 @@ requirement. No open issue tracks these yet by design.
 | **F1** | Rust SDK | Second SDK proving the spec is language-independent (own OS glue, no Node) | Released `v0.1.0` (`sdk/rust/`, RFC 0008): contract + basic suites green on 3 OS, consumer example, cross-checked against TypeScript |
 | **F2** | Go SDK | Same contract in Go | Released `go-v0.1.0` (`sdk/go/`, RFC 0009): guarded terminal state, concurrent drains, 19 tests green under mandatory `-race` on all three OSes, consumer example, cross-language cancellation check with discrepancy 001 recorded |
 | **F3** | Python SDK | Same contract in Python | Released `py-v0.1.0` (`sdk/python/`, RFC 0011): async-first guarded state, concurrent drains, 20 contract tests green on 3 OS × Python 3.11/3.14, consumer example, TS cross-check |
-| **F4** | Firecracker backend | MicroVM isolation engine | Not started |
+| **F4** | Firecracker backend | MicroVM isolation engine | Blocked on P1 infrastructure (deferred 2026-10-14): no KVM-capable host available; local Lima/Colima/Docker excluded, no remote host identified; asset pipeline is proposal-only; RFC 0012 governs resume |
 | **F5** | WASI backend | WebAssembly execution model | Not started |
 | **F6** | Remote daemon backend | Execution over a remote boundary (would make `remoteExecution` true) | Not started |
 | **F7** | Host mounts | Explicit opt-in host-path exposure under the filesystem-isolation model | Not started |

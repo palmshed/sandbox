@@ -163,3 +163,22 @@ honest capability reporting
     ↓
 docs updated with flags
 ```
+
+## 11. Deferral record (2026-10-14)
+
+- **Decision**: F4 deferred. Prerequisite P1 is unsatisfied and not
+  satisfiable from the development host, so implementation does not
+  start, not even a stub.
+- **Survey evidence**: local `/dev/kvm` absent (verified); Lima, Colima,
+  and Docker Desktop excluded as KVM-hosting paths on Apple Silicon
+  (Hypervisor.framework exposes no KVM interface to guests); no remote
+  Linux host identified; no cloud CLI or account available locally. The
+  blocker is infrastructure, not a missing local tool.
+- **Asset pipeline**: remains a proposal. The manifest plus
+  checksum-verification design in section 5 is unvalidated: no upstream
+  artifact, license, or reproducibility claim is verified.
+- **Resume conditions**: verify host architecture, `/dev/kvm` presence
+  and permissions, and a successful real Firecracker boot on the new
+  host first; then establish the self-hosted runner and
+  integration-test path; then begin backend implementation. Runner
+  registration alone does not prove Firecracker can boot.
