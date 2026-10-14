@@ -241,11 +241,12 @@ settles outstanding executions as failed with an infrastructure cause
 (distinct from workload failure under the existing error model), and
 only destroy is valid on that sandbox afterwards.
 
-## 13. Deferred design tracks (track 1 decided in section 14, rest open)
+## 13. Deferred design tracks (tracks 1-3 decided in sections 14-16, rest open)
 
-The deeper review surfaced six further tracks. Track 1 reached a
-decision, recorded in section 14; tracks 2 through 6 remain open, in
-this order, with no design decisions recorded for them yet:
+The deeper review surfaced six further tracks. Tracks 1, 2, and 3
+reached decisions, recorded in sections 14, 15, and 16; tracks 4
+through 6 remain open, in this order, with no design decisions recorded
+for them yet:
 
 1. Guest protocol contract: decided in section 14 (framing, versioning,
    identity and dedup, ordering barrier, cancellation wire behavior,
@@ -253,8 +254,10 @@ this order, with no design decisions recorded for them yet:
 2. Resource control mapping: decided in section 15 (layer split,
    cgroup accounting, aggregate memory policy, transfer-boundary quota,
    honest quota-override rejection).
-3. Filesystem transfer invariants: containment on both boundaries,
-   symlink races, partial transfers, size bounds, atomic completion.
+3. Filesystem transfer invariants: decided in section 16 (single-file
+   ops, restart-from-zero, per-path atomic commits, content-only
+   transfer, outcome-dependent commit, best-effort quota rollback with
+   ownership tie, destroy ordering, shared kind-tagged dedup).
 4. Asset manifest completion: provenance, checksums, licenses, and
    compatibility before any artifact source is chosen.
 5. Failure and capability states for unavailable agents, crashed VMMs,
@@ -499,3 +502,80 @@ on real-VM tests: `cpuLimits` on tested budget enforcement,
 `cpuQuotaLimits` on tested host-cgroup throttling with the documented
 sandbox granularity and honest-rejection semantics. No new capability
 is proposed.
+
+## 16. Filesystem transfer invariants (decided 2026-10-14)
+
+Design decision only. No implementation, provisioning, SDK contract
+change, capability promotion, or P1 movement. Transfer sizes and the
+concurrent-transfer bound stay provisional until real-VM testing.
+
+### Operations and granularity
+
+Transfers are single-file operations matching the existing
+`writeFile`/`uploadFile`/`downloadFile` surface. Directories transfer
+as multiple file transfers with implicit parent creation; no
+directory-level operation is added. Only contents plus relative paths
+cross the boundary: no modes, timestamps, ownership, or symlinks.
+Symlinks, fifos, sockets, and device nodes are rejected per entry with
+an explicit error naming the entry, and single-file operations against
+such paths fail with `FS_ERROR`, consistent with the existing
+symlink-escape rejection.
+
+### Restart and integrity
+
+Interrupted transfers clean up staging and retry from byte zero with a
+new transfer ID; no resumable offsets. Declared sizes are enforced in
+both directions, and completion requires byte-count plus SHA-256
+verification. A missing, truncated, or inconsistent transfer fails
+explicitly.
+
+### Commit ordering and outcome rules
+
+Each execution collects a change set (created, modified, and deleted
+paths with tombstones) relative to its starting snapshot. Changes
+commit per file as transfers complete, ordered by completion, with no
+cross-file transaction and no snapshot isolation: last-completer-wins
+per path, matching the reference backend's sharing behavior under
+concurrency.
+
+Change sets commit after nonzero exit, cancellation, and timeout
+exactly when the agent can enumerate them reliably, preserving the
+reference behavior that only quota breach discards workspace changes.
+When the agent is silent or the VMM has died, nothing is committed and
+the sandbox is marked unhealthy.
+
+### Quota rollback with ownership tie
+
+Per-execution quota rollback follows the reference's best-effort
+semantics: it removes files newly created by the execution and does not
+promise restoration of overwritten or deleted originals. This is not a
+full transactional rollback. Cleanup is tied to the execution's own
+committed version record: each commit records which execution version
+published each path, and rollback deletes a path only when that record
+still names the rolling-back execution's version. A newer execution's
+result is therefore never deleted by an older execution's rollback,
+preserving last-completer-wins.
+
+### Destroy ordering
+
+A single host-side commit point (the atomic rename into the workspace,
+guarded by a liveness check under mutual ordering with destroy)
+decides every transfer. If destruction wins, the transfer settles
+failed and staging is removed; nothing publishes afterwards.
+
+### Deduplication
+
+One shared kind-tagged slab (`EXEC`|`XFER`) with a single 4096-entry
+cap and monotonic sequence space. Host-generated `exec_` and `xfer_`
+namespaces stay distinct, the kind tag is checked on lookup, and
+per-kind terminal states replay on duplicate requests. Replaying a
+terminal transfer outcome does not recover transferred bytes: unless
+the completion-barrier bytes were received, the transfer fails rather
+than reporting success merely because its ID exists.
+
+### Transport bounds
+
+Dedicated data connections per transfer operation, 64 KiB data frames,
+incremental staging with no full-file buffering on either end, and at
+most 8 concurrent transfers. All bounds provisional pending real-VM
+measurement.
