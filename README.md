@@ -28,6 +28,7 @@
   - **Windows network isolation**: unsupported (no native unprivileged mechanism; RFC 0004)
   - **Docker resource/network enforcement**: enforced since backend-parity work item `#4` (`cpuLimits`, `memoryLimits`, `networkIsolation` all `true` with integration coverage)
   - **`cpuQuota`**: hard rate cap that throttles instead of killing, shipped in v1.2.0 (RFC 0007); enforced on Linux, Windows, and Docker where each platform's probe passes, macOS reports `false` (`cpuTimeLimit` time budgets are enforced everywhere `cpuLimits` is `true`)
+- **Firecracker design status**: the six-track backend design is complete and recorded (RFC 0012), but no real VM has booted and no capability has been verified. Implementation awaits a real KVM-capable host and guest-agent `READY`; until then the backend remains unvalidated with all capability claims unpromoted.
 
 ---
 
@@ -35,8 +36,8 @@
 
 1. **Runtime Specification (`spec/`)**: JSON Schemas & versioning ([`spec/version.md`](spec/version.md)).
 2. **Compliance Suite (`compliance/`)**: Cross-language conformance test suite.
-3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript), published to npm); Rust SDK at the F1 milestone ([`sdk/rust`](sdk/rust)); Go SDK at the F2 milestone ([`sdk/go`](sdk/go), `-race` verified); Python SDK at the F3 milestone ([`sdk/python`](sdk/python), async-first, 20 contract tests). Each non-npm SDK carries its own tag namespace (`v0.x`, `go-v0.x`, `py-v0.x`) so version lines stay independent.
-4. **Backends (`backends/`)**: Native process driver, Docker container driver; Firecracker and WASI are planned.
+3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript), published to npm as `1.3.0`); Rust SDK released as `v0.1.0` ([`sdk/rust`](sdk/rust)); Go SDK released as `go-v0.1.0` ([`sdk/go`](sdk/go), `-race` verified); Python SDK released as `py-v0.1.0` ([`sdk/python`](sdk/python), async-first). Each non-npm SDK carries its own tag namespace (`v0.x`, `go-v0.x`, `py-v0.x`) so version lines stay independent.
+4. **Backends (`backends/`)**: Native process driver, Docker container driver; Firecracker design complete per RFC 0012 (six-track sequence decided) with implementation blocked on a real KVM-capable host; WASI remains planned.
 
 ---
 
