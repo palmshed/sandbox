@@ -251,11 +251,11 @@ settles outstanding executions as failed with an infrastructure cause
 (distinct from workload failure under the existing error model), and
 only destroy is valid on that sandbox afterwards.
 
-## 13. Deferred design tracks (tracks 1-3 decided in sections 14-16, rest open)
+## 13. Deferred design tracks (tracks 1-4 decided in sections 14-17, rest open)
 
-The deeper review surfaced six further tracks. Tracks 1, 2, and 3
-reached decisions, recorded in sections 14, 15, and 16; tracks 4
-through 6 remain open, in this order, with no design decisions recorded
+The deeper review surfaced six further tracks. Tracks 1 through 4
+reached decisions, recorded in sections 14, 15, 16, and 17; tracks 5
+and 6 remain open, in this order, with no design decisions recorded
 for them yet:
 
 1. Guest protocol contract: decided in section 14 (framing, versioning,
@@ -268,8 +268,10 @@ for them yet:
    ops, restart-from-zero, per-path atomic commits, content-only
    transfer, outcome-dependent commit, best-effort quota rollback with
    ownership tie, destroy ordering, shared kind-tagged dedup).
-4. Asset manifest completion: provenance, checksums, licenses, and
-   compatibility before any artifact source is chosen.
+4. Asset manifest completion: decided in section 17 (pinned manifest
+   and verification rules, feasibility-only CI artifacts, scripted
+   customization with no SSH, pre-screen versus runtime validation,
+   compatibility triple, licensing checklist).
 5. Failure and capability states for unavailable agents, crashed VMMs,
    and unestablished guarantees.
 6. Test matrix: ordinary contract tests kept distinct from tests that
@@ -589,3 +591,69 @@ Dedicated data connections per transfer operation, 64 KiB data frames,
 incremental staging with no full-file buffering on either end, and at
 most 8 concurrent transfers. All bounds provisional pending real-VM
 measurement.
+
+## 17. Asset supply chain (decided 2026-10-14)
+
+Design decision only. No binaries, implementation, provisioning, SDK
+contract change, capability promotion, or P1 movement. The final
+artifact source and completed license review stay open; what is decided
+here is the supply-chain procedure.
+
+### Pinned manifest and verification rules
+
+`backends/firecracker/assets.json` (committed; binaries never vendored)
+records one entry per artifact with exact resolved key or URL (never a
+floating `latest`), SHA-256 digest, artifact role, license field, and
+the kernel, rootfs, and agent-protocol compatibility triple it was
+tested as. Every artifact is verified before boot, including files
+already present locally: re-hash on every run, never trust by mtime,
+and abort the run on mismatch.
+
+### Digest provenance
+
+A digest proves a download matches pinned bytes; it does not prove the
+bytes came from the intended publisher. The digest must therefore be
+established and reviewed against a documented source before the
+artifact is approved, and the manifest records upstream location,
+exact artifact identity, digest, and review status together. Trust is
+never established silently by hashing whatever arrived on the first
+run.
+
+### Feasibility versus production artifacts
+
+Pinned upstream CI artifacts (per the Firecracker project's own
+getting-started flow) are approved for feasibility boots only: they
+resolve the fastest path to a real boot and nothing else. A successful
+feasibility boot is never represented as production asset
+qualification. The graduated image (devtool-built or OCI-derived, still
+open) gets its own review before anything beyond feasibility depends
+on it.
+
+### Scripted customization, no SSH
+
+Every image modification (Node runtime, guest agent, configuration) is
+scripted and recorded in the manifest; no hand-edited image is
+accepted. No SSH daemon or authorized key ships in any guest image:
+the vsock agent channel is the only guest access path.
+
+### Pre-screen versus runtime validation, kept separate
+
+Kernel configuration grep (vsock guest support, built-in ext4, cgroup
+controllers, serial console, plus aarch64 `keep_bootcon` where
+applicable), artifact identity, image format checks, and customization
+review are pre-boot screening: a missing item fails selection before
+any provisioning. Booting, rootfs mounting, controller availability,
+vsock connectivity, agent `READY`, and enforcement behavior are
+real-VM acceptance checks. Config screening is necessary but never
+sufficient, and the two lists are never merged.
+
+### Compatibility triple and licensing checklist
+
+Kernel, rootfs, and agent protocol version pin as one tested triple;
+changing any member re-runs boot, handshake, compliance, and consumer
+evidence. The licensing checklist covers the Firecracker binary, the
+kernel, the rootfs contents, and the Node.js distribution including
+its bundled dependencies (reviewed as a set, not as a single MIT
+artifact). Fetch-at-test-time is not redistribution; vendoring would
+change that analysis, which is one more reason binaries never enter
+the repo.
