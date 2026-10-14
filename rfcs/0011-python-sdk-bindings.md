@@ -1,6 +1,6 @@
 # RFC 0011: Python SDK Binding Note (F3)
 
-- **Status**: Accepted as the F3 audit output. No code yet.
+- **Status**: Accepted as the F3 audit output; crate implemented and released as `py-v0.1.0` (see `sdk/python/`), 3-OS × Python 3.11/3.14 gate green.
 - **Scope**: Maps the existing sandbox contract to Python without
   redefining it. JSON schemas stay authoritative; this note fixes how
   TypeScript-isms surface in Python, which concurrency model the SDK
