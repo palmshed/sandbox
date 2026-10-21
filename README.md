@@ -39,6 +39,12 @@
 3. **SDKs (`sdk/`)**: Reference TypeScript SDK ([`sdk/typescript`](sdk/typescript), published to npm as `1.3.0`); Rust SDK released as `v0.1.0` ([`sdk/rust`](sdk/rust)); Go SDK released as `go-v0.1.0` ([`sdk/go`](sdk/go), `-race` verified); Python SDK released as `py-v0.1.0` ([`sdk/python`](sdk/python), async-first). Each non-npm SDK carries its own tag namespace (`v0.x`, `go-v0.x`, `py-v0.x`) so version lines stay independent.
 4. **Backends (`backends/`)**: Native process driver, Docker container driver; Firecracker design complete per RFC 0012 (six-track sequence decided) with implementation blocked on a real KVM-capable host; WASI remains planned.
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/palmshed/sandbox/main/.github/assets/sandbox-flow.png" alt="Request flow: an SDK exec() call passes through capability negotiation to a sandbox backend, whose captured result returns to the caller" width="100%">
+</p>
+
+*Illustrative request flow for `exec()`. It depicts the execution lifecycle and current backend status (Native and Docker validated, Firecracker blocked on P1, WASI planned), not validated per-backend guarantees; the exact contract lives in [`spec/`](spec) and the backend design in [RFC 0012](rfcs/0012-firecracker-feasibility.md).*
+
 ---
 
 ## Installation
